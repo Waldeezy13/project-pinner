@@ -1,0 +1,13 @@
+# .NET build output
+src/**/bin/
+src/**/obj/
+
+# Shipped binary is published via GitHub Releases, not committed
+dist/
+*.exe
+
+# Editor / OS
+.vs/
+*.user
+.DS_Store
+*.log

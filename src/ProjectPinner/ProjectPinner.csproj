@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>ProjectPinner</AssemblyName>
+    <RootNamespace>ProjectPinner</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <Deterministic>true</Deterministic>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>../../assets/app.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <AssemblyTitle>Project Pinner</AssemblyTitle>
+    <Product>Project Pinner</Product>
+    <Company>Waldo Development LLC</Company>
+    <Authors>Waldo Development LLC</Authors>
+    <Copyright>© 2026 Waldo Development LLC</Copyright>
+    <Description>Project Pinner — friendly names for long project numbers, pinned to Quick Access. Developed by Waldo Development LLC.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference assemblies let us target .NET Framework 4.8 from Linux. PrivateAssets=all
+         keeps them out of the output: net48 itself ships with every modern Windows. -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embed the icon so the WPF window titlebar can load it at runtime. -->
+    <EmbeddedResource Include="../../assets/app.ico" Link="app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="PresentationFramework" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+
+</Project>

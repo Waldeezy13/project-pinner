@@ -1,0 +1,123 @@
+# Build, sign (Azure Trusted Signing), and publish a Project Pinner release.
+#
+# Mirrors the Waldo_Development_Suite signing pattern: OIDC federated auth via
+# azure/login, then azure/trusted-signing-action signs the exe in place.
+#
+# Run it: Actions -> release -> "Run workflow", from the `main` branch, with a
+# version like 1.0.1. (Dispatching from main makes the OIDC subject
+# `repo:Waldeezy13/project-pinner:ref:refs/heads/main`.)
+#
+# Required GH repo secrets (same values as your other apps):
+#   AZURE_TENANT_ID
+#   AZURE_CLIENT_ID     (the signing Entra app; OIDC federated - no client secret)
+#
+# Required one-time Azure step: add a federated credential on that Entra app for
+#   subject:  repo:Waldeezy13/project-pinner:ref:refs/heads/main
+#   issuer:   https://token.actions.githubusercontent.com
+#   audience: api://AzureADTokenExchange
+#
+# Optional GH repo variables (defaults already match the WDS signing account):
+#   TRUSTED_SIGNING_ENDPOINT       default: https://eus.codesigning.azure.net/
+#   TRUSTED_SIGNING_ACCOUNT        default: WDS-Signing
+#   TRUSTED_SIGNING_CERT_PROFILE   default: WaldoDevelopment-PublicTrust
+#
+# If AZURE_TENANT_ID is unset, signing is skipped and an UNSIGNED exe is released.
+
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, e.g. 1.0.1 (no leading v)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # create the GitHub Release
+  id-token: write   # OIDC federated auth to Azure Trusted Signing
+
+jobs:
+  build-sign-release:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      # Surface secrets at job scope so `if: env.AZURE_TENANT_ID != ''` can gate
+      # the signing steps (secrets aren't readable directly in `if:`).
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      TRUSTED_SIGNING_ENDPOINT: ${{ vars.TRUSTED_SIGNING_ENDPOINT || 'https://eus.codesigning.azure.net/' }}
+      TRUSTED_SIGNING_ACCOUNT: ${{ vars.TRUSTED_SIGNING_ACCOUNT || 'WDS-Signing' }}
+      TRUSTED_SIGNING_CERT_PROFILE: ${{ vars.TRUSTED_SIGNING_CERT_PROFILE || 'WaldoDevelopment-PublicTrust' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 (builds the net48 target)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build (net48, Release)
+        shell: pwsh
+        run: dotnet build src/ProjectPinner/ProjectPinner.csproj -c Release -nologo
+
+      # OIDC handshake; azure/trusted-signing-action uses the resulting token.
+      - name: Azure login (OIDC federated)
+        if: env.AZURE_TENANT_ID != ''
+        uses: azure/login@v2
+        with:
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          subscription-id: 460c420e-f1e8-4ef3-93af-a7afbeb56c11
+
+      - name: Sign ProjectPinner.exe (Azure Trusted Signing)
+        if: env.AZURE_TENANT_ID != ''
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
+          azure-client-id: ${{ env.AZURE_CLIENT_ID }}
+          endpoint: ${{ env.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ env.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.TRUSTED_SIGNING_CERT_PROFILE }}
+          files-folder: ${{ github.workspace }}/src/ProjectPinner/bin/Release
+          files-folder-filter: exe
+          files-folder-recurse: false
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Stage artifact + show signature
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item src/ProjectPinner/bin/Release/ProjectPinner.exe dist/ProjectPinner.exe -Force
+          $sig = Get-AuthenticodeSignature dist/ProjectPinner.exe
+          $sha = (Get-FileHash dist/ProjectPinner.exe -Algorithm SHA256).Hash
+          Write-Host "Signature status: $($sig.Status)"
+          Write-Host "Signer:           $($sig.SignerCertificate.Subject)"
+          Write-Host "SHA-256:          $sha"
+          @"
+          Signed build of Project Pinner — friendly Quick Access names for long network project numbers.
+
+          Download **ProjectPinner.exe** below and double-click. No installer, no admin, no .NET to install. Windows 10 (1903+) / 11.
+
+          Signed by Azure Trusted Signing (Waldo Development LLC) — no SmartScreen "unknown publisher" prompt.
+
+          Right-click a folder → **Pin with alias to Quick Access** (Win11: under *Show more options*). Aliases are ordinary shortcuts; your network folders are never moved, renamed, or modified.
+
+          SHA-256: ``$sha``
+
+          © 2026 Waldo Development LLC. All rights reserved.
+          "@ | Out-File -FilePath dist/notes.md -Encoding utf8
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = '${{ github.event.inputs.version }}'.TrimStart('v')
+          gh release create "v$v" dist/ProjectPinner.exe `
+            --title "Project Pinner v$v" `
+            --notes-file dist/notes.md

@@ -72,6 +72,22 @@ jobs:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           subscription-id: 460c420e-f1e8-4ef3-93af-a7afbeb56c11
 
+      # azure/trusted-signing-action installs its module from PSGallery, which isn't
+      # always registered on the runner's PowerShell. Register it first.
+      - name: Ensure PSGallery is registered
+        if: env.AZURE_TENANT_ID != ''
+        shell: pwsh
+        run: |
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default -ErrorAction SilentlyContinue
+          }
+          if (-not (Get-PackageSource -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PackageSource -Name PSGallery -ProviderName PowerShellGet `
+              -Location https://www.powershellgallery.com/api/v2 -Trusted -Force -ErrorAction SilentlyContinue
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+          Get-PSRepository
+
       - name: Sign ProjectPinner.exe (Azure Trusted Signing)
         if: env.AZURE_TENANT_ID != ''
         uses: azure/trusted-signing-action@v0

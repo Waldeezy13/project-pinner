@@ -17,14 +17,16 @@ A lightweight Windows utility that turns a network folder like
 **`Acme Tower - 1003948572-PH2`** — without ever moving, renaming, or modifying the
 real folder on the network.
 
-- **Tiny & self-contained** — a single ~180 KB `.exe`. No installer, no .NET to install,
-  **no admin rights**. Runs on any Windows 10 (1903+) or Windows 11 machine.
-- **Two ways to pin** — right-click any folder → *Pin with alias to Quick Access*, or use
-  the app. Type a friendly name, done.
+- **One file, no admin** — a single signed `.exe`. Double-click to install: it sets up the
+  Windows 11 **top-level** right-click menu and opens the app. Runs on Windows 10 (1903+)
+  and Windows 11.
+- **Right-click to pin** — right-click any folder → *Pin with alias to Quick Access*, type an
+  alias, done. (Or add projects from the app.)
 - **Safe by design** — each alias is an ordinary Windows shortcut (`.lnk`), a pure pointer.
   Creating or deleting one **never touches the target network folder**. A built-in
   *Self-test* proves it.
-- **Modern dark UI** — compact, with tooltips throughout.
+- **Signed & modern** — code-signed by Waldo Development LLC (no SmartScreen "unknown
+  publisher"). Compact dark UI with tooltips throughout.
 
 ## How it works
 
@@ -36,11 +38,16 @@ then your readable list.
 ## Install & use
 
 1. Download `ProjectPinner.exe` from the [latest release](../../releases/latest).
-2. Double-click it. It quietly installs itself to `%LOCALAPPDATA%\ProjectPinner\`, adds a
-   Start Menu entry, registers the right-click menu, and pins your **Projects** folder.
-   *(Unsigned download: if Windows SmartScreen appears, click **More info → Run anyway**.)*
-3. Add projects from the app or via the folder right-click menu (on Windows 11 it's under
-   **Show more options**).
+2. Double-click it. It installs per-user to `%LOCALAPPDATA%\ProjectPinner\` (**no admin**),
+   registers the right-click menu, and opens. *The first launch pauses a few seconds while it
+   sets up the menu — that's normal.*
+3. Right-click any folder → **Pin with alias to Quick Access** (the **top-level** menu on
+   Windows 11; the regular context menu on Windows 10). Type an alias. Or add projects from
+   the app.
+
+**Update:** download the new `.exe` and run it — it replaces the installed copy and refreshes
+the menu. **Uninstall:** open Project Pinner → **Uninstall** (removes everything cleanly), or
+*Settings → Apps → Project Pinner*.
 
 Full guide: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 

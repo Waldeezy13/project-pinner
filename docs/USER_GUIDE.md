@@ -3,7 +3,7 @@
 Give long, unfriendly project numbers an easy-to-read name, gathered in one **"Projects"**
 folder pinned to File Explorer's **Quick Access**.
 
-- Each project becomes a **friendly-named shortcut** (e.g. `Acme Tower - 1003948572`) inside
+- Each project becomes an **alias shortcut** (e.g. `Acme Tower - 1003948572`) inside
   your pinned **Projects** folder. Click it → it opens the real network folder.
 - **Your network folders are never touched.** An alias is just an ordinary Windows shortcut
   (`.lnk`) — a pure pointer. Creating, renaming, or deleting one never opens, writes,
@@ -18,29 +18,29 @@ folder pinned to File Explorer's **Quick Access**.
 ---
 
 ## 1. What you download
-A single file: **`ProjectPinner.exe`** (~120 KB). No installer, no .NET to install,
-**no admin rights**. Runs on any Windows 10 (1903+) or Windows 11 machine.
+A single **signed** file: **`ProjectPinner.exe`**. No separate installer, no .NET to install,
+**no admin rights**. Runs on Windows 10 (1903+) and Windows 11.
 
 ## 2. First run
-Double-click `ProjectPinner.exe`. It quietly installs itself to `%LOCALAPPDATA%\ProjectPinner\`,
-adds a Start Menu shortcut, registers the right-click menu, and (the first time you add a
-project) pins your **Projects** folder to Quick Access. No prompts, no admin.
+Double-click `ProjectPinner.exe`. It installs per-user to `%LOCALAPPDATA%\ProjectPinner\`,
+adds a Start Menu shortcut, and sets up the right-click menu, then opens. *The first launch
+pauses a few seconds while it registers the menu — that's normal.* No prompts, no admin.
 
-*(Unsigned download: if Windows shows "Windows protected your PC", click **More info → Run
-anyway**. Ask about code-signing to remove this.)*
+Because it's code-signed by Waldo Development LLC, there's **no SmartScreen "unknown
+publisher"** warning.
 
 ## 3. Two ways to add a project
 
 **A) Right-click a folder**
-1. Right-click the project folder. **Windows 11:** click **Show more options** first.
-2. Choose **"Pin with alias to Quick Access."**
-3. Type the friendly name → **Pin**. It's added to your Projects folder.
+1. Right-click the project folder. On **Windows 11** the entry is in the **main** menu
+   (**Pin with alias to Quick Access**); on Windows 10 it's in the regular context menu.
+2. Type the **alias** → **Pin**. It's added to your Projects folder.
 
 **B) From the app**
-1. Open **Project Pinner**. Paste a network path (or **Browse…**), type a **Friendly name**,
+1. Open **Project Pinner**. Paste a network path (or **Browse…**), type an **Alias**,
    check the preview, click **Create & Pin**.
 
-Either way: open Quick Access → **Projects** → click your friendly name to jump to the project.
+Either way: open Quick Access → **Projects** → click your alias to jump to the project.
 
 In the app's list you can **Open** a project, **Pin Projects folder** (re-pin the hub if you
 ever unpin it), or **Remove link** (deletes only that shortcut).
@@ -63,9 +63,9 @@ deletes the shortcut, and **verifies the folder and file are untouched**. Expect
    file remain.
 
 ### Test C — Right-click a real network folder
-Right-click a project on the network → (Win11: *Show more options* →) **Pin with alias to
-Quick Access** → name it → **Pin**. Confirm it appears in **Projects** with your alias and
-opens the live project. Remove it and confirm the network folder is untouched.
+Right-click a project on the network → **Pin with alias to Quick Access** (top-level menu on
+Win11) → name it → **Pin**. Confirm it appears in **Projects** with your alias and opens the
+live project. Remove it and confirm the network folder is untouched.
 
 ---
 
@@ -75,19 +75,17 @@ opens the live project. Remove it and confirm the network folder is untouched.
   see/open its local path. Renaming just renames the **local** folder and re-pins it — your
   network folders are never moved or renamed.
 - **Where it lives:** by default `%LOCALAPPDATA%\ProjectPinner\Projects`, holding one `.lnk`
-  per project. The friendly name = the shortcut's filename.
-- **Upgrading from the earlier build:** on first launch the app automatically clears the old,
-  wrongly-named pins it had created (removing only its own local placeholders — never your
-  network folders) and shows a note.
-- **Right-click menu on/off:** toggle from the app (bottom-right).
-- **Uninstall:** turn the right-click menu off in the app, then delete
-  `%LOCALAPPDATA%\ProjectPinner\` and the Start Menu shortcut, and unpin Projects.
+  per project. The alias = the shortcut's filename.
+- **Update:** download the new `ProjectPinner.exe` and run it — it replaces the installed copy
+  and refreshes the menu.
+- **Uninstall:** open Project Pinner → **Uninstall** (removes the menu, app, shortcuts, pins,
+  and the install folder cleanly), or *Settings → Apps → Project Pinner*. Your network folders
+  are never touched.
 
 ## 6. Troubleshooting
 | Symptom | Fix |
 |---|---|
-| Right-click item missing (Win11) | It's under **Show more options** (or press Shift+F10). |
-| Projects folder not pinned | App → **Pin Projects folder**. |
-| Clicking the menu opens the main app, not the prompt | The installed copy is stale; close all windows and re-run the new exe (it now self-updates even if one is running). |
-| "Windows protected your PC" | Unsigned download: **More info → Run anyway** (or code-sign it). |
+| Top-level menu entry missing (Win11) | Re-run the exe to re-register; sign out/in if needed. The entry can also appear under **Show more options** as a fallback. |
+| Projects folder not pinned | App → **Pin folder**. |
+| Right-click does nothing | See `%LOCALAPPDATA%\ProjectPinner\shellext-activation.log` and send it over. |
 | Startup error dialog | Paste me the message or `%LOCALAPPDATA%\ProjectPinner\error.log`. |

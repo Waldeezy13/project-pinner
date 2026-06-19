@@ -7,6 +7,15 @@
 #include <knownfolders.h> // FOLDERID_LocalAppData
 #include <strsafe.h>      // StringCchPrintfA
 #include <string>
+#include <vector>
+
+// Fallbacks in case the SDK headers don't surface these (Win10 RS2+).
+#ifndef PROC_THREAD_ATTRIBUTE_DESKTOP_APP_POLICY
+#define PROC_THREAD_ATTRIBUTE_DESKTOP_APP_POLICY 0x00020012
+#endif
+#ifndef PROCESS_CREATION_DESKTOP_APP_BREAKAWAY_ENABLE_PROCESS_TREE
+#define PROCESS_CREATION_DESKTOP_APP_BREAKAWAY_ENABLE_PROCESS_TREE 0x01
+#endif
 
 #pragma comment(lib, "shlwapi.lib")
 
@@ -85,6 +94,52 @@ std::wstring InstalledExePath() {
     return L"";
 }
 
+// Launch a normal desktop process from inside the packaged COM surrogate.
+// ShellExecute is denied here (SE_ERR_ACCESSDENIED) because we run with package
+// identity; CreateProcess WITH the desktop-app-breakaway policy is the
+// documented way to spawn a child that runs OUTSIDE the package (so it gets the
+// real environment, real AppData, normal Quick Access access). Returns true on
+// success; sets win32Err on failure.
+bool LaunchDetached(const std::wstring& exe, const std::wstring& args, DWORD& win32Err) {
+    std::wstring cmd = L"\"" + exe + L"\" " + args;
+    std::vector<wchar_t> cmdline(cmd.begin(), cmd.end());
+    cmdline.push_back(L'\0');
+
+    STARTUPINFOEXW si = {};
+    si.StartupInfo.cb = sizeof(si);
+
+    SIZE_T attrSize = 0;
+    InitializeProcThreadAttributeList(nullptr, 1, 0, &attrSize);
+    bool haveAttr = false;
+    if (attrSize > 0) {
+        si.lpAttributeList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(
+            HeapAlloc(GetProcessHeap(), 0, attrSize));
+        if (si.lpAttributeList != nullptr &&
+            InitializeProcThreadAttributeList(si.lpAttributeList, 1, 0, &attrSize)) {
+            DWORD policy = PROCESS_CREATION_DESKTOP_APP_BREAKAWAY_ENABLE_PROCESS_TREE;
+            if (UpdateProcThreadAttribute(si.lpAttributeList, 0,
+                    PROC_THREAD_ATTRIBUTE_DESKTOP_APP_POLICY,
+                    &policy, sizeof(policy), nullptr, nullptr)) {
+                haveAttr = true;
+            }
+        }
+    }
+
+    PROCESS_INFORMATION pi = {};
+    DWORD flags = haveAttr ? EXTENDED_STARTUPINFO_PRESENT : 0;
+    si.StartupInfo.cb = haveAttr ? sizeof(si) : sizeof(STARTUPINFOW);
+    BOOL ok = CreateProcessW(exe.c_str(), cmdline.data(), nullptr, nullptr, FALSE,
+                             flags, nullptr, nullptr, &si.StartupInfo, &pi);
+    win32Err = ok ? 0 : GetLastError();
+    if (ok) { CloseHandle(pi.hThread); CloseHandle(pi.hProcess); }
+
+    if (si.lpAttributeList != nullptr) {
+        DeleteProcThreadAttributeList(si.lpAttributeList);
+        HeapFree(GetProcessHeap(), 0, si.lpAttributeList);
+    }
+    return ok != FALSE;
+}
+
 }  // namespace
 
 PinCommand::PinCommand() {
@@ -161,17 +216,28 @@ IFACEMETHODIMP PinCommand::Invoke(IShellItemArray* items, IBindCtx*) {
 
     // Quote the folder path so spaces survive as a single argument.
     const std::wstring args = L"--pin \"" + path + L"\"";
+
+    // Primary: CreateProcess with desktop-app breakaway (ShellExecute is denied
+    // from the packaged surrogate).
+    DWORD err = 0;
+    if (LaunchDetached(exe, args, err)) {
+        DiagLog("PinCommand::Invoke - launched OK (CreateProcess breakaway).");
+        return S_OK;
+    }
+
+    // Fallback: ShellExecute (works in non-packaged contexts).
     HINSTANCE rc = ShellExecuteW(nullptr, L"open", exe.c_str(), args.c_str(),
                                  nullptr, SW_SHOWNORMAL);
     const INT_PTR code = reinterpret_cast<INT_PTR>(rc);
     if (code <= 32) {
-        char buf[80] = {0};
+        char buf[128] = {0};
         StringCchPrintfA(buf, ARRAYSIZE(buf),
-                         "PinCommand::Invoke - ShellExecute failed, code=%lld", (long long)code);
+                         "PinCommand::Invoke - launch failed: CreateProcess err=%lu, ShellExecute code=%lld",
+                         err, (long long)code);
         DiagLog(buf);
         return E_FAIL;
     }
-    DiagLog("PinCommand::Invoke - launched OK.");
+    DiagLog("PinCommand::Invoke - launched OK (ShellExecute fallback).");
     return S_OK;
 }
 IFACEMETHODIMP PinCommand::GetFlags(EXPCMDFLAGS* flags) {

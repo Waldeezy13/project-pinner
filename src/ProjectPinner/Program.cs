@@ -20,16 +20,13 @@ namespace ProjectPinner
                 return r.Passed ? 0 : 1;
             }
 
-            // COM EXE server mode: launched by Windows shell to serve IExplorerCommand.
-            // COM passes "-Embedding" or "/Embedding" when activating an ExeServer.
-            if (args.Any(a => string.Equals(a, "-Embedding", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(a, "/Embedding", StringComparison.OrdinalIgnoreCase)))
-            {
-                return ComServer.Run();
-            }
-
             // From here on it's the GUI. Catch *everything* so a startup failure shows a
             // visible error + writes a log, instead of the window silently never appearing.
+            //
+            // The exe always runs UNPACKAGED — either launched directly by the user, or
+            // launched by the native shell-ext DLL with "--pin <folder>". The Win11 modern
+            // menu is provided by the separate sparse MSIX + ProjectPinner.ShellExt.dll, not
+            // by this process, so there is no COM-server / packaged mode here.
             try
             {
                 AppDomain.CurrentDomain.UnhandledException += (s, e) =>
@@ -39,31 +36,22 @@ namespace ProjectPinner
                 ProjectsHubService.HubFolderName =
                     string.IsNullOrWhiteSpace(cfg.HubFolderName) ? "Projects" : cfg.HubFolderName;
 
-                // Self-install only when running as a plain exe (not an MSIX package —
-                // MSIX manages its own install/update lifecycle via the OS).
-                bool isPackaged = IsRunningAsPackage();
-                if (!isPackaged)
+                // First standalone launch (run from a download folder): copy ourselves into
+                // LocalAppData, make a Start Menu shortcut, and register the classic right-click
+                // verb (shows under "Show more options"). Idempotent; skipped once installed.
+                try
                 {
-                    try
-                    {
-                        if (!Installer.IsRunningFromInstallDir())
-                            Installer.InstallFilesForCurrentUser();
-                        Installer.CleanupOldExe();
-                    }
-                    catch { /* non-fatal */ }
+                    if (!Installer.IsRunningFromInstallDir())
+                        Installer.InstallFilesForCurrentUser();
+                    Installer.CleanupOldExe();
                 }
-                else
-                {
-                    // MSIX install: ensure the ExplorerCommandHandler verb is registered
-                    // so it appears in the Windows 11 top-level right-click menu.
-                    try { ShellMenuService.RegisterForMsix(); } catch { }
-                }
+                catch { /* non-fatal */ }
 
                 var app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
                 app.DispatcherUnhandledException += OnDispatcherException;
 
-                // Launched from the old-style registry right-click verb: "--pin <folder>".
-                // (The MSIX path uses COM/IExplorerCommand instead, not this flag.)
+                // Launched from a right-click verb (classic registry verb OR the native
+                // shell-ext DLL's IExplorerCommand): "--pin <folder>".
                 string pinPath = ArgValue(args, "--pin");
                 Window window = !string.IsNullOrEmpty(pinPath)
                     ? (Window)new QuickPinWindow(pinPath, cfg)
@@ -75,22 +63,6 @@ namespace ProjectPinner
                 ReportFatal(ex, "startup");
                 return 1;
             }
-        }
-
-        /// <summary>
-        /// Returns true when the process has MSIX package identity (installed via .msix).
-        /// Unpackaged plain-exe launches return false.
-        /// </summary>
-        private static bool IsRunningAsPackage()
-        {
-            try
-            {
-                uint len = 0;
-                // ERROR_INSUFFICIENT_BUFFER (122) means packaged; 15700 means no package.
-                int rc = NativeMethods.GetCurrentPackageName(ref len, null);
-                return rc != 15700; // APPMODEL_ERROR_NO_PACKAGE
-            }
-            catch { return false; }
         }
 
         private static void OnDispatcherException(object sender, DispatcherUnhandledExceptionEventArgs e)

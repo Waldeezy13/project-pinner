@@ -21,16 +21,6 @@ namespace ProjectPinner
         // folders both resolve to the Directory class in Explorer.
         private const string KeyPath = @"Software\Classes\Directory\shell\ProjectPinnerAlias";
 
-        private static bool IsRunningAsPackage()
-        {
-            try
-            {
-                uint len = 0;
-                return NativeMethods.GetCurrentPackageName(ref len, null) != 15700;
-            }
-            catch { return false; }
-        }
-
         private static string TargetExe()
         {
             string exe = AppPaths.InstalledExePath;
@@ -49,29 +39,8 @@ namespace ProjectPinner
             catch { return null; }
         }
 
-        /// <summary>
-        /// When running as an MSIX package: registers the folder verb using ExplorerCommandHandler
-        /// (points at our IExplorerCommand CLSID). With package identity, Windows 11 promotes this
-        /// to the top-level context menu instead of "Show more options". Called at app startup.
-        /// </summary>
-        public static void RegisterForMsix()
-        {
-            string clsid = "{" + ExplorerCommandClsid.Value + "}";
-            string icon = EnsureIconFile();
-            using (var key = Registry.CurrentUser.CreateSubKey(KeyPath))
-            {
-                key.SetValue(null, MenuText);
-                if (icon != null) key.SetValue("Icon", icon);
-                // ExplorerCommandHandler tells the shell to use IExplorerCommand for this verb
-                // instead of launching a child process. Required for the top-level Win 11 menu.
-                key.SetValue("ExplorerCommandHandler", clsid);
-            }
-        }
-
         public static void Register()
         {
-            // MSIX: use RegisterForMsix() instead (IExplorerCommand path).
-            if (IsRunningAsPackage()) { RegisterForMsix(); return; }
             string exe = TargetExe();
             if (string.IsNullOrEmpty(exe)) return;
 

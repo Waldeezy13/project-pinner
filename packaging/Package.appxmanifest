@@ -1,89 +1,110 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  MSIX manifest for Project Pinner.
+  Sparse external-content MSIX manifest for Project Pinner's Win11 modern
+  context-menu integration. Models the proven Waldo Vault shell extension.
 
-  Publisher is injected by the CI workflow from the Azure Trusted Signing cert
-  subject extracted from the already-signed ProjectPinner.exe. Do not hard-code
-  the Publisher here — it will be replaced by build-msix.ps1.
+  WHY SPARSE + EXTERNAL CONTENT (not a full MSIX with the DLL inside):
+  on Win11 24H2, a shell-ext DLL loaded from inside C:\Program Files\WindowsApps
+  by the COM surrogate fails with 0x800700B6 and the modern menu silently drops
+  the verb. Keeping the DLL OUTSIDE the package (real folder, referenced via
+  uap10:AllowExternalContent + Add-AppxPackage -ExternalLocation) avoids it.
+  The package payload is therefore ONLY this manifest + Assets.
 
-  CLSID {E4B8A120-71F3-4E2C-9AC5-3D8B7F2E1047} must match ExplorerCommand.cs.
+  LOAD-BEARING DETAILS (each one was a separate Vault bug):
+   - com:SurrogateServer (NOT com:InProcessServer): 24H2's modern-menu
+     enumerator ignores InProcessServer-registered IExplorerCommand handlers.
+   - desktop4 wrapper but desktop5 ItemType/Verb: the namespace split is the
+     difference between "package registers but no menu" and "menu shows".
+   - uap10:TrustLevel="mediumIL" + RuntimeBehavior="win32App" on <Application>,
+     and rescap unvirtualizedResources: without these Windows registers the
+     package but quietly refuses to load the COM class.
+   - Do NOT put uap10:RuntimeBehavior="packagedClassicApp" on com:Extension.
+   - Publisher CN below MUST exactly match the signing cert subject (injected
+     by build-msix.ps1 from the signed exe), or the class never instantiates.
+
+  CLSID A3D8F1E2-6C4B-4A91-B7E5-2F9C8D013A64 must match PinCommand.cpp.
 -->
 <Package
-  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
-  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
-  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
-  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
-  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
-  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap3 com desktop rescap">
+    xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+    xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+    xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+    xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+    xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
+    xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+    IgnorableNamespaces="uap uap10 com desktop desktop4 desktop5 rescap">
 
   <Identity
-    Name="WaldoDevelopmentLLC.ProjectPinner"
-    Publisher="PUBLISHER_PLACEHOLDER"
-    Version="1.0.4.0"
-    ProcessorArchitecture="x64"/>
+      Name="WaldoDevelopment.ProjectPinnerShellExt"
+      Version="1.0.4.0"
+      Publisher="PUBLISHER_PLACEHOLDER"
+      ProcessorArchitecture="x64" />
 
   <Properties>
     <DisplayName>Project Pinner</DisplayName>
     <PublisherDisplayName>Waldo Development LLC</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
+    <!-- Lets the deployment service register a manifest whose binaries live
+         outside the package payload (Add-AppxPackage -ExternalLocation). -->
+    <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0"/>
+    <TargetDeviceFamily Name="Windows.Desktop"
+                        MinVersion="10.0.22000.0"
+                        MaxVersionTested="10.0.27000.0" />
   </Dependencies>
 
   <Resources>
-    <Resource Language="en-US"/>
+    <Resource Language="en-us" />
   </Resources>
 
-  <Applications>
-    <Application Id="ProjectPinner" Executable="ProjectPinner.exe"
-                 EntryPoint="Windows.FullTrustApplication">
-      <uap:VisualElements
-        DisplayName="Project Pinner"
-        Description="Friendly-named shortcuts in Quick Access for long network project numbers."
-        BackgroundColor="transparent"
-        Square150x150Logo="Assets\Square150x150Logo.png"
-        Square44x44Logo="Assets\Square44x44Logo.png"/>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="unvirtualizedResources" />
+  </Capabilities>
 
+  <Applications>
+    <Application Id="ProjectPinnerContextMenu"
+                 uap10:TrustLevel="mediumIL"
+                 uap10:RuntimeBehavior="win32App">
+      <uap:VisualElements
+          DisplayName="Project Pinner"
+          Description="Right-click a folder to pin it to Quick Access with a friendly alias"
+          BackgroundColor="transparent"
+          Square150x150Logo="Assets\Square150x150Logo.png"
+          Square44x44Logo="Assets\Square44x44Logo.png"
+          AppListEntry="none" />
       <Extensions>
 
-        <!-- Allow the exe to run as a full-trust desktop process. -->
-        <desktop:Extension Category="windows.fullTrustProcess"
-                           Executable="ProjectPinner.exe"/>
+        <!-- The verb that surfaces in the modern menu. Wrapper is desktop4;
+             ItemType/Verb are desktop5 (the namespace split is required).
+             Directory = right-click a folder; Directory\Background =
+             right-click empty space inside an open folder. -->
+        <desktop4:Extension Category="windows.fileExplorerContextMenus">
+          <desktop4:FileExplorerContextMenus>
+            <desktop5:ItemType Type="Directory">
+              <desktop5:Verb Id="PinWithAlias" Clsid="A3D8F1E2-6C4B-4A91-B7E5-2F9C8D013A64" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type="Directory\Background">
+              <desktop5:Verb Id="PinWithAlias" Clsid="A3D8F1E2-6C4B-4A91-B7E5-2F9C8D013A64" />
+            </desktop5:ItemType>
+          </desktop4:FileExplorerContextMenus>
+        </desktop4:Extension>
 
-        <!--
-          Register ProjectPinner.exe as a COM EXE server exposing the
-          IExplorerCommand implementation (CLSID must match ExplorerCommand.cs).
-        -->
+        <!-- In-proc DLL COM server hosted by the dllhost surrogate. -->
         <com:Extension Category="windows.comServer">
           <com:ComServer>
-            <com:ExeServer Executable="ProjectPinner.exe"
-                           DisplayName="Project Pinner Context Menu">
-              <com:Class Id="E4B8A120-71F3-4E2C-9AC5-3D8B7F2E1047"
-                         DisplayName="Pin with alias to Quick Access"/>
-            </com:ExeServer>
+            <com:SurrogateServer DisplayName="Project Pinner Context Menu handler">
+              <com:Class Id="A3D8F1E2-6C4B-4A91-B7E5-2F9C8D013A64"
+                         Path="ProjectPinner.ShellExt.dll"
+                         ThreadingModel="STA" />
+            </com:SurrogateServer>
           </com:ComServer>
         </com:Extension>
-
-        <!--
-          NOTE: desktop4:FileExplorerContextMenus only accepts file-type extensions
-          (e.g. .txt, *) — it does NOT support Type="Directory".
-          The folder verb is instead registered at runtime via ShellMenuService.RegisterForMsix():
-            HKCU\Software\Classes\Directory\shell\ProjectPinnerAlias\ExplorerCommandHandler
-              (Default) = {E4B8A120-71F3-4E2C-9AC5-3D8B7F2E1047}
-          With MSIX package identity the Windows 11 shell promotes this ExplorerCommandHandler
-          verb to the top-level context menu rather than "Show more options".
-        -->
 
       </Extensions>
     </Application>
   </Applications>
-
-  <Capabilities>
-    <!-- Required for windows.fullTrustProcess and COM ExeServer -->
-    <rescap:Capability Name="runFullTrust"/>
-  </Capabilities>
-
 </Package>

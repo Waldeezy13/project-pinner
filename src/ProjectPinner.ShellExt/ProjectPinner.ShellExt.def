@@ -1,0 +1,8 @@
+; LIBRARY name intentionally omitted — MSBuild sets the DLL name from the
+; project, and a hard-coded LIBRARY with a dot in the name triggers LNK4070.
+; Only DllGetClassObject + DllCanUnloadNow are needed: activation goes through
+; PackagedCom (the AppxManifest com:SurrogateServer), not regsvr32/HKCR.
+
+EXPORTS
+    DllGetClassObject   PRIVATE
+    DllCanUnloadNow     PRIVATE

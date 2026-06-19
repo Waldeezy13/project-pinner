@@ -45,13 +45,25 @@ namespace ProjectPinner
                 if (!File.Exists(AppPaths.IconPath)) return;
 
                 string ini = Path.Combine(HubDir, "desktop.ini");
-                File.WriteAllText(ini,
-                    "[.ShellClassInfo]\r\nIconFile=" + AppPaths.IconPath + "\r\nIconIndex=0\r\n");
+                string content = "[.ShellClassInfo]\r\nIconFile=" + AppPaths.IconPath + "\r\nIconIndex=0\r\n";
+
+                // Skip writing if already identical (avoids unnecessary re-pin churn).
+                bool changed = !File.Exists(ini) || File.ReadAllText(ini) != content;
+                if (changed) File.WriteAllText(ini, content);
                 File.SetAttributes(ini, FileAttributes.Hidden | FileAttributes.System);
 
                 var di = new DirectoryInfo(HubDir);
                 if ((di.Attributes & FileAttributes.ReadOnly) == 0)
                     di.Attributes |= FileAttributes.ReadOnly;
+
+                // Tell Explorer the folder appearance changed.
+                NativeMethods.SHChangeNotify(NativeMethods.SHCNE_UPDATEDIR,
+                    NativeMethods.SHCNF_PATH | NativeMethods.SHCNF_FLUSH, HubDir, null);
+
+                // Quick Access caches icons at pin time. If already pinned, re-pin so it
+                // picks up the new icon. pintohome on an already-pinned folder refreshes it.
+                if (changed && IsHubPinned())
+                    QuickAccessService.Pin(HubDir);
             }
             catch { }
         }

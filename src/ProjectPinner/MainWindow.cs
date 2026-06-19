@@ -41,6 +41,10 @@ namespace ProjectPinner
             UpdatePreview();
             RefreshStorageInfo();
 
+            // Ensure hub folder exists and has the custom icon applied (desktop.ini).
+            // Must run at startup so existing installs pick it up on first launch of a new build.
+            try { ProjectsHubService.EnsureHub(); } catch { }
+
             int cleared = 0;
             try { cleared = ProjectService.CleanupLegacyPins(); } catch { }
 

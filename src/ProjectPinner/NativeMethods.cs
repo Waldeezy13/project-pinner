@@ -25,5 +25,14 @@ namespace ProjectPinner
 
         [DllImport("dwmapi.dll", PreserveSig = true)]
         public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+        // ---- Shell change notifications (shell32) -----------------------------
+        // Tells Explorer a folder's appearance changed (e.g. desktop.ini icon update).
+        public const int SHCNE_UPDATEDIR = 0x00001000;
+        public const int SHCNF_PATH      = 0x0001;
+        public const int SHCNF_FLUSH     = 0x1000;
+
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        public static extern void SHChangeNotify(int wEventId, int uFlags, string dwItem1, string dwItem2);
     }
 }

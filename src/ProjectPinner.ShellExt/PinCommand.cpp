@@ -2,8 +2,10 @@
 #include "DebugLog.h"
 #include "Paths.h"
 
-#include <shellapi.h>  // ShellExecuteW
-#include <shlwapi.h>   // SHStrDupW
+#include <shellapi.h>     // ShellExecuteW
+#include <shlwapi.h>      // SHStrDupW
+#include <knownfolders.h> // FOLDERID_LocalAppData
+#include <strsafe.h>      // StringCchPrintfA
 #include <string>
 
 #pragma comment(lib, "shlwapi.lib")
@@ -51,6 +53,36 @@ std::wstring IconLocation() {
         return ico;
     }
     return dir + L"ProjectPinner.exe,0";
+}
+
+std::string WideToUtf8(const std::wstring& w) {
+    if (w.empty()) return "";
+    int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), static_cast<int>(w.size()),
+                                nullptr, 0, nullptr, nullptr);
+    std::string s(static_cast<size_t>(n > 0 ? n : 0), '\0');
+    if (n > 0) {
+        WideCharToMultiByte(CP_UTF8, 0, w.c_str(), static_cast<int>(w.size()),
+                            &s[0], n, nullptr, nullptr);
+    }
+    return s;
+}
+
+// The installer always places ProjectPinner.exe at
+// %LOCALAPPDATA%\ProjectPinner\ProjectPinner.exe. Resolve it THERE first — that
+// real per-user path is reliable even if the packaged DLL's own module path is
+// presented to us virtualized. Fall back to the DLL's own directory.
+std::wstring InstalledExePath() {
+    PWSTR local = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &local)) &&
+        local != nullptr) {
+        std::wstring p = local;
+        CoTaskMemFree(local);
+        p += L"\\ProjectPinner\\ProjectPinner.exe";
+        if (GetFileAttributesW(p.c_str()) != INVALID_FILE_ATTRIBUTES) return p;
+    }
+    const std::wstring dir = ThisModuleDir();
+    if (!dir.empty()) return dir + L"ProjectPinner.exe";  // best effort
+    return L"";
 }
 
 }  // namespace
@@ -117,19 +149,29 @@ IFACEMETHODIMP PinCommand::Invoke(IShellItemArray* items, IBindCtx*) {
         DiagLog("PinCommand::Invoke - no path in selection.");
         return E_INVALIDARG;
     }
-    DiagLog(std::string("PinCommand::Invoke - launching pin dialog."));
 
-    const std::wstring dir = ThisModuleDir();
-    const std::wstring exe = dir + L"ProjectPinner.exe";
-    // Quote the folder path so spaces survive as a single argument.
-    const std::wstring args = L"--pin \"" + path + L"\"";
+    const std::wstring exe = InstalledExePath();
+    DiagLog(std::string("PinCommand::Invoke - path=") + WideToUtf8(path) +
+            " exe=" + WideToUtf8(exe));
 
-    HINSTANCE rc = ShellExecuteW(nullptr, L"open", exe.c_str(), args.c_str(),
-                                 dir.c_str(), SW_SHOWNORMAL);
-    if (reinterpret_cast<INT_PTR>(rc) <= 32) {
-        DiagLog("PinCommand::Invoke - ShellExecute failed to launch ProjectPinner.exe.");
+    if (exe.empty() || GetFileAttributesW(exe.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        DiagLog("PinCommand::Invoke - ProjectPinner.exe not found at resolved path.");
         return E_FAIL;
     }
+
+    // Quote the folder path so spaces survive as a single argument.
+    const std::wstring args = L"--pin \"" + path + L"\"";
+    HINSTANCE rc = ShellExecuteW(nullptr, L"open", exe.c_str(), args.c_str(),
+                                 nullptr, SW_SHOWNORMAL);
+    const INT_PTR code = reinterpret_cast<INT_PTR>(rc);
+    if (code <= 32) {
+        char buf[80] = {0};
+        StringCchPrintfA(buf, ARRAYSIZE(buf),
+                         "PinCommand::Invoke - ShellExecute failed, code=%lld", (long long)code);
+        DiagLog(buf);
+        return E_FAIL;
+    }
+    DiagLog("PinCommand::Invoke - launched OK.");
     return S_OK;
 }
 IFACEMETHODIMP PinCommand::GetFlags(EXPCMDFLAGS* flags) {

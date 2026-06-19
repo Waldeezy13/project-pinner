@@ -9,7 +9,7 @@ namespace ProjectPinner
 {
     /// <summary>
     /// The small dialog launched by the Explorer right-click verb ("--pin &lt;folder&gt;").
-    /// The folder is fixed; the user just types a friendly name and hits Pin.
+    /// The folder is fixed; the user just types an alias and hits Pin.
     /// Auto-sizes to its content (SizeToContent) so it can never clip.
     /// </summary>
     internal sealed class QuickPinWindow : Window
@@ -151,14 +151,14 @@ namespace ProjectPinner
   </Grid.Resources>
 
   <StackPanel>
-    <TextBlock Text='Pin with a friendly name' FontSize='15' FontWeight='Bold'/>
+    <TextBlock Text='Pin with an alias' FontSize='15' FontWeight='Bold'/>
 
     <TextBlock Text='FOLDER' Style='{StaticResource Label}' Margin='1,10,0,3'/>
     <TextBlock Text='@@PATH@@' FontSize='12' Foreground='#C7CCD4' TextTrimming='CharacterEllipsis'/>
 
-    <TextBlock Text='FRIENDLY NAME' Style='{StaticResource Label}' Margin='1,10,0,4'/>
+    <TextBlock Text='ALIAS' Style='{StaticResource Label}' Margin='1,10,0,4'/>
     <TextBox x:Name='NameBox' Style='{StaticResource Input}'
-             ToolTip='A short, readable name for this project (goes in front of the project number)'/>
+             ToolTip='A short, readable alias for this folder (goes in front of the project number)'/>
 
     <TextBlock Text='WILL APPEAR AS' Style='{StaticResource Label}' Margin='1,10,0,2'/>
     <TextBlock x:Name='PreviewText' FontSize='13' Foreground='#7FB0FF' FontWeight='SemiBold'

@@ -489,7 +489,7 @@ namespace ProjectPinner
     <Grid.ColumnDefinitions><ColumnDefinition Width='*'/><ColumnDefinition Width='Auto'/></Grid.ColumnDefinitions>
     <StackPanel Grid.Column='0'>
       <TextBlock Text='Project Pinner' FontSize='15' FontWeight='Bold'/>
-      <TextBlock Text='Friendly-named shortcuts in one folder pinned to Quick Access.'
+      <TextBlock Text='Alias shortcuts in one folder, pinned to Quick Access.'
                  FontSize='11' Foreground='#9AA0AA' Margin='0,1,0,0'/>
     </StackPanel>
     <Button x:Name='SettingsToggle' Grid.Column='1' Content='▸  Folder name &amp; location'
@@ -545,9 +545,9 @@ namespace ProjectPinner
           <Button x:Name='BrowseButton' Grid.Column='1' Content='Browse' Style='{StaticResource GhostButton}' Margin='6,0,0,0'
                   ToolTip='Browse for the project folder'/>
         </Grid>
-        <TextBlock Text='FRIENDLY NAME' Style='{StaticResource Label}' Margin='1,7,0,3'/>
+        <TextBlock Text='ALIAS' Style='{StaticResource Label}' Margin='1,7,0,3'/>
         <TextBox x:Name='NameBox' Style='{StaticResource Input}'
-                 ToolTip='A short, readable name for this project (goes in front of the project number)'/>
+                 ToolTip='A short, readable alias for this folder (goes in front of the project number)'/>
         <TextBlock Text='WILL APPEAR AS' Style='{StaticResource Label}' Margin='1,7,0,3'/>
         <TextBlock x:Name='PreviewText' FontSize='13' Foreground='#7FB0FF' FontWeight='SemiBold' TextTrimming='CharacterEllipsis'
                    ToolTip='Preview of the shortcut name as it will appear in your Projects folder'/>

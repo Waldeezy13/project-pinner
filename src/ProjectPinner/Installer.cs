@@ -66,8 +66,8 @@ namespace ProjectPinner
         }
 
         /// <summary>
-        /// Removes everything the app set up for the current user (right-click menu, Start Menu
-        /// shortcut, Quick Access pin). Never deletes local shortcut data — the user keeps that.
+        /// Removes the per-user shell registrations: the classic right-click verb, the Start
+        /// Menu shortcut, and the Quick Access pin. (File deletion is handled separately.)
         /// </summary>
         public static void Uninstall()
         {
@@ -76,15 +76,62 @@ namespace ProjectPinner
             try { if (File.Exists(AppPaths.StartMenuShortcut)) File.Delete(AppPaths.StartMenuShortcut); } catch { }
         }
 
-        /// <summary>Best-effort cleanup of a renamed-aside old exe from a prior update.</summary>
-        public static void CleanupOldExe()
+        /// <summary>
+        /// Full removal: the MSIX context-menu package + shell-ext DLL, the classic verb, the
+        /// Start Menu shortcut, and the Quick Access pin. The installed files themselves are
+        /// removed afterwards via <see cref="ScheduleInstallDirDeletion"/> (this exe may be
+        /// running from the install dir, so the directory is deleted once we exit).
+        /// </summary>
+        public static void FullUninstall()
+        {
+            try { ContextMenuInstaller.Remove(); } catch { }
+            Uninstall();
+        }
+
+        /// <summary>
+        /// Schedules deletion of the whole install dir once this process exits. A detached
+        /// cmd retries for ~20s so it succeeds even after the user dismisses a dialog (the
+        /// running exe is only unlocked once we exit). Removes the exe, DLL, icon, settings,
+        /// logs, and the local shortcuts (hub) folder — but never anything on the network.
+        /// </summary>
+        public static void ScheduleInstallDirDeletion()
         {
             try
             {
-                string aside = AppPaths.InstalledExePath + ".old";
-                if (File.Exists(aside)) File.Delete(aside);
+                string dir = AppPaths.InstallRoot;
+                // Safety: only ever delete a fully-rooted path that is our own install folder.
+                // Guards against a misconfigured %LOCALAPPDATA% yielding a relative/unexpected
+                // path that rmdir /s /q would otherwise walk.
+                if (string.IsNullOrEmpty(dir) || !Path.IsPathRooted(dir) ||
+                    !string.Equals(Path.GetFileName(dir.TrimEnd('\\')), "ProjectPinner",
+                                   StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                // Retry loop: wait, try rmdir, stop once the dir is gone (covers the exe still
+                // being locked while this process is finishing).
+                string cmd =
+                    "/c for /l %i in (1,1,20) do ( ping 127.0.0.1 -n 2 >nul & " +
+                    "rmdir /s /q \"" + dir + "\" 2>nul & if not exist \"" + dir + "\" exit )";
+                var psi = new ProcessStartInfo("cmd.exe", cmd)
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                };
+                Process.Start(psi);
             }
-            catch { /* still in use; will clear on a later run */ }
+            catch { }
+        }
+
+        /// <summary>Best-effort cleanup of renamed-aside old binaries from a prior update
+        /// (the exe and the shell-ext DLL, either of which may have been locked at update time).</summary>
+        public static void CleanupOldExe()
+        {
+            foreach (var aside in new[] { AppPaths.InstalledExePath + ".old", AppPaths.ShellExtDllPath + ".old" })
+            {
+                try { if (File.Exists(aside)) File.Delete(aside); }
+                catch { /* still in use; will clear on a later run */ }
+            }
         }
 
         private static void TryCreateStartMenuShortcut()

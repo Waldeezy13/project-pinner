@@ -20,6 +20,16 @@ namespace ProjectPinner
                 return r.Passed ? 0 : 1;
             }
 
+            // Silent full uninstall (used by the in-app Uninstall button's deferred path and by
+            // any external caller): remove the MSIX menu, classic verb, pins, shortcuts, then
+            // delete the install dir once we exit.
+            if (args.Any(a => string.Equals(a, "--uninstall", StringComparison.OrdinalIgnoreCase)))
+            {
+                try { Installer.FullUninstall(); } catch { }
+                Installer.ScheduleInstallDirDeletion();
+                return 0;
+            }
+
             // From here on it's the GUI. Catch *everything* so a startup failure shows a
             // visible error + writes a log, instead of the window silently never appearing.
             //
@@ -36,13 +46,24 @@ namespace ProjectPinner
                 ProjectsHubService.HubFolderName =
                     string.IsNullOrWhiteSpace(cfg.HubFolderName) ? "Projects" : cfg.HubFolderName;
 
-                // First standalone launch (run from a download folder): copy ourselves into
-                // LocalAppData, make a Start Menu shortcut, and register the classic right-click
-                // verb (shows under "Show more options"). Idempotent; skipped once installed.
+                // First launch / a freshly downloaded build (i.e. not yet running from the
+                // install dir) = install-or-update: copy ourselves into LocalAppData, make a
+                // Start Menu shortcut, and set up the right-click menu. Idempotent; on a normal
+                // launch from the install dir this whole block is skipped.
                 try
                 {
                     if (!Installer.IsRunningFromInstallDir())
-                        Installer.InstallFilesForCurrentUser();
+                    {
+                        Installer.InstallFilesForCurrentUser();  // exe, Start Menu, icon, classic verb
+
+                        // Register the signed MSIX + native DLL for the Windows 11 top-level
+                        // menu. If that succeeds, drop the classic verb so the entry isn't
+                        // duplicated under "Show more options"; if the package isn't available
+                        // (e.g. Windows 10), the classic verb remains as the fallback.
+                        bool modern = false;
+                        try { modern = ContextMenuInstaller.EnsureInstalled(); } catch { }
+                        if (modern) { try { ShellMenuService.Unregister(); } catch { } }
+                    }
                     Installer.CleanupOldExe();
                 }
                 catch { /* non-fatal */ }

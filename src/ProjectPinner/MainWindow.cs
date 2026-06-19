@@ -310,27 +310,23 @@ namespace ProjectPinner
         // ---- Uninstall --------------------------------------------------------
         private void OnUninstall()
         {
-            string dataPath = AppPaths.InstallRoot;
             var confirm = System.Windows.MessageBox.Show(this,
                 "Uninstall Project Pinner from this PC?\n\n" +
-                "This will remove:\n" +
-                "  • The right-click “Pin with alias” menu\n" +
-                "  • The Start Menu shortcut\n" +
-                "  • The Quick Access pin\n\n" +
-                "Your local shortcuts folder will NOT be deleted. " +
-                "Delete it manually when ready:\n" + dataPath,
-                AppPaths.AppName, MessageBoxButton.YesNo, MessageBoxImage.Question);
+                "This removes the right-click menu, the app itself, the Start Menu shortcut, " +
+                "the Quick Access pin, and all of your alias shortcuts.\n\n" +
+                "Your real folders on the network are NOT touched — the aliases are only " +
+                "local shortcuts.",
+                AppPaths.AppName, MessageBoxButton.YesNo, MessageBoxImage.Warning);
 
             if (confirm != MessageBoxResult.Yes) return;
 
             try
             {
-                Installer.Uninstall();
+                Installer.FullUninstall();
                 System.Windows.MessageBox.Show(this,
-                    "Project Pinner has been uninstalled.\n\n" +
-                    "Your shortcuts folder remains at:\n" + dataPath + "\n\n" +
-                    "Delete it manually when you’re ready.",
+                    "Project Pinner has been removed. This window will now close.",
                     AppPaths.AppName, MessageBoxButton.OK, MessageBoxImage.Information);
+                Installer.ScheduleInstallDirDeletion(); // deletes the install dir after we exit
                 Close();
             }
             catch (Exception ex) { Status("Uninstall error: " + ex.Message); }

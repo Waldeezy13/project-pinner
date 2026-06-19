@@ -35,10 +35,14 @@
     xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
     IgnorableNamespaces="uap uap10 com desktop desktop4 desktop5 rescap">
 
+  <!-- Publisher MUST exactly match the Azure Trusted Signing cert subject that signs the
+       MSIX, or Windows registers the package but never loads the COM class. It is hardcoded
+       (stable cert) so the MSIX can be built before the exe exists. Version is injected by
+       build-msix.ps1 at pack time. -->
   <Identity
       Name="WaldoDevelopment.ProjectPinnerShellExt"
       Version="1.0.4.0"
-      Publisher="PUBLISHER_PLACEHOLDER"
+      Publisher="CN=Waldo Development LLC, O=Waldo Development LLC, L=Lewisville, S=Texas, C=US"
       ProcessorArchitecture="x64" />
 
   <Properties>

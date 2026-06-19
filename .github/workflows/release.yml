@@ -1,17 +1,19 @@
 # Build, sign (Azure Trusted Signing), and publish a Project Pinner release.
 #
-# Produces:
-#   ProjectPinner-Setup.zip  — native shell-ext DLL + sparse MSIX + exe + installer.
-#                              Right-click verb in the Win11 TOP-LEVEL menu.
-#   ProjectPinner.exe        — standalone signed exe (verb under "Show more options").
+# Produces ONE artifact: a single signed ProjectPinner.exe that installs everything.
+# Double-click it (no admin) -> it drops the native shell-ext DLL + registers the signed
+# sparse MSIX, giving the Windows 11 TOP-LEVEL right-click menu, then opens the app.
 #
-# Signing uses Azure Trusted Signing via OIDC (secrets AZURE_TENANT_ID +
-# AZURE_CLIENT_ID, federated credential subject repo:Waldeezy13/project-pinner:
-# ref:refs/heads/main). If AZURE_TENANT_ID is unset, signing is skipped and
-# UNSIGNED artifacts are produced (the MSIX context menu will NOT load).
+# Build order matters: the exe EMBEDS the already-signed DLL + MSIX, so we
+#   build DLL -> sign DLL -> build MSIX -> sign MSIX -> build exe (embeds them) -> sign exe.
+# The MSIX manifest Publisher is hardcoded to the cert subject, so the MSIX can be built
+# before the exe exists.
 #
-# Run with draft=true (default) to stage a hidden release for testing, then
-# publish it manually once verified.
+# Signing: Azure Trusted Signing via OIDC (secrets AZURE_TENANT_ID + AZURE_CLIENT_ID,
+# federated credential for this repo's main ref). If AZURE_TENANT_ID is unset, signing is
+# skipped and UNSIGNED artifacts are produced (the MSIX menu will NOT load until signed).
+#
+# Run with draft=true (default) to stage a hidden release for testing, then publish it.
 
 name: release
 
@@ -19,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version, e.g. 1.0.5 (no leading v)'
+        description: 'Release version, e.g. 1.0.8 (no leading v)'
         required: true
         type: string
       draft:
@@ -47,6 +49,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Require signing secret
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrEmpty($env:AZURE_TENANT_ID)) {
+            throw "AZURE_TENANT_ID is not set. Signing is required (an unsigned sparse MSIX will not register and the menu won't load). Aborting."
+          }
+
       - name: Setup .NET 8 (builds the net48 target)
         uses: actions/setup-dotnet@v4
         with:
@@ -63,16 +72,7 @@ jobs:
           if (-not (Test-Path 'src/ProjectPinner.ShellExt/bin/Release/ProjectPinner.ShellExt.dll')) {
             throw 'Shell-ext DLL build produced no output.'
           }
-
-      - name: Build app exe (net48, Release)
-        shell: pwsh
-        run: dotnet build src/ProjectPinner/ProjectPinner.csproj -c Release -nologo
-
-      - name: Stage binaries
-        shell: pwsh
-        run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item src/ProjectPinner/bin/Release/ProjectPinner.exe dist/ProjectPinner.exe -Force
           Copy-Item src/ProjectPinner.ShellExt/bin/Release/ProjectPinner.ShellExt.dll dist/ProjectPinner.ShellExt.dll -Force
           Copy-Item assets/app.ico dist/app.ico -Force
 
@@ -97,22 +97,6 @@ jobs:
           }
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
 
-      - name: Sign exe (Azure Trusted Signing)
-        if: env.AZURE_TENANT_ID != ''
-        uses: azure/trusted-signing-action@v0
-        with:
-          azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
-          azure-client-id: ${{ env.AZURE_CLIENT_ID }}
-          endpoint: ${{ env.TRUSTED_SIGNING_ENDPOINT }}
-          trusted-signing-account-name: ${{ env.TRUSTED_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ env.TRUSTED_SIGNING_CERT_PROFILE }}
-          files-folder: ${{ github.workspace }}/dist
-          files-folder-filter: exe
-          files-folder-recurse: false
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-
       - name: Sign shell-ext DLL (Azure Trusted Signing)
         if: env.AZURE_TENANT_ID != ''
         uses: azure/trusted-signing-action@v0
@@ -129,11 +113,11 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
-      - name: Build sparse MSIX (Publisher injected from signed exe)
+      - name: Build sparse MSIX (external content)
         shell: pwsh
         run: |
-          $v = '${{ github.event.inputs.version }}'.TrimStart('v') + '.0'
-          & packaging/build-msix.ps1 -ExePath dist/ProjectPinner.exe -OutDir dist -Version $v
+          $v = '${{ github.event.inputs.version }}'.TrimStart('v')
+          & packaging/build-msix.ps1 -OutDir dist -Version $v
 
       - name: Sign MSIX (Azure Trusted Signing)
         if: env.AZURE_TENANT_ID != ''
@@ -151,49 +135,54 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
-      - name: Assemble setup bundle + notes
+      # The exe embeds the now-signed dist/ProjectPinner.ShellExt.dll + dist/ProjectPinner.msix.
+      - name: Build app exe (net48, Release, embeds signed DLL + MSIX)
         shell: pwsh
         run: |
-          $stage = 'dist/setup'
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item dist/ProjectPinner.exe            "$stage/ProjectPinner.exe" -Force
-          Copy-Item dist/ProjectPinner.ShellExt.dll   "$stage/ProjectPinner.ShellExt.dll" -Force
-          Copy-Item dist/ProjectPinner.msix           "$stage/ProjectPinner.msix" -Force
-          Copy-Item dist/app.ico                      "$stage/app.ico" -Force
-          Copy-Item packaging/Install.ps1   "$stage/Install.ps1" -Force
-          Copy-Item packaging/Install.bat   "$stage/Install.bat" -Force
-          Copy-Item packaging/Uninstall.ps1 "$stage/Uninstall.ps1" -Force
-          Copy-Item packaging/Uninstall.bat "$stage/Uninstall.bat" -Force
-          Copy-Item packaging/README.txt    "$stage/README.txt" -Force
-          Compress-Archive -Path "$stage/*" -DestinationPath dist/ProjectPinner-Setup.zip -Force
+          dotnet build src/ProjectPinner/ProjectPinner.csproj -c Release -nologo
+          Copy-Item src/ProjectPinner/bin/Release/ProjectPinner.exe dist/ProjectPinner.exe -Force
 
+      - name: Sign exe (Azure Trusted Signing)
+        if: env.AZURE_TENANT_ID != ''
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
+          azure-client-id: ${{ env.AZURE_CLIENT_ID }}
+          endpoint: ${{ env.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ env.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.TRUSTED_SIGNING_CERT_PROFILE }}
+          files-folder: ${{ github.workspace }}/dist
+          files-folder-filter: exe
+          files-folder-recurse: false
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Show signatures + build notes
+        shell: pwsh
+        run: |
           foreach ($f in 'ProjectPinner.exe','ProjectPinner.ShellExt.dll','ProjectPinner.msix') {
             $sig = Get-AuthenticodeSignature "dist/$f"
             Write-Host "$f  -> $($sig.Status)  $($sig.SignerCertificate.Subject)"
           }
-          $zipSha = (Get-FileHash dist/ProjectPinner-Setup.zip -Algorithm SHA256).Hash
           $exeSha = (Get-FileHash dist/ProjectPinner.exe -Algorithm SHA256).Hash
           @"
           Project Pinner — friendly Quick Access names for long network project numbers.
 
-          ## Two ways to install
+          ## Install (no admin)
+          1. Download **ProjectPinner.exe** below.
+          2. Double-click it.
 
-          | Download | Menu position | How |
-          |---|---|---|
-          | **ProjectPinner-Setup.zip** | Win11 **top-level** right-click menu | Unzip, double-click Install.bat (no admin) |
-          | **ProjectPinner.exe** | Under "Show more options" | Run it directly (no admin) |
+          That's it. It installs the Windows 11 top-level right-click menu and opens the app.
+          Right-click any folder -> **Pin with alias to Quick Access**.
 
-          The Setup zip installs a signed sparse MSIX + a native shell extension so the
-          "Pin with alias to Quick Access" verb appears in the main Windows 11 menu.
+          To update: download the new exe and run it. To uninstall: open Project Pinner ->
+          **Uninstall** (or Settings -> Apps -> Project Pinner).
 
-          Both are signed by Azure Trusted Signing (Waldo Development LLC) — no SmartScreen warning.
-          Your network folders are never moved, renamed, or modified — aliases are ordinary shortcuts.
+          Signed by Azure Trusted Signing (Waldo Development LLC) — no SmartScreen warning.
+          Your network folders are never moved, renamed, or modified — aliases are shortcuts.
 
-          ## SHA-256
-          ```
-          ProjectPinner-Setup.zip  $zipSha
-          ProjectPinner.exe        $exeSha
-          ```
+          SHA-256 (ProjectPinner.exe): ``$exeSha``
 
           © 2026 Waldo Development LLC. All rights reserved.
           "@ | Out-File -FilePath dist/notes.md -Encoding utf8
@@ -204,7 +193,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $v = '${{ github.event.inputs.version }}'.TrimStart('v')
-          $relArgs = @("v$v", "dist/ProjectPinner-Setup.zip", "dist/ProjectPinner.exe",
+          $relArgs = @("v$v", "dist/ProjectPinner.exe",
                        "--title", "Project Pinner v$v", "--notes-file", "dist/notes.md")
           if ('${{ github.event.inputs.draft }}' -ne 'false') { $relArgs += '--draft' }
           gh release create @relArgs

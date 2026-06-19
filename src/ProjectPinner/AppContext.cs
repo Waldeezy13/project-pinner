@@ -30,6 +30,17 @@ namespace ProjectPinner
         /// <summary>On-disk copy of the app icon (used by the right-click menu + shortcut).</summary>
         public static string IconPath => Path.Combine(InstallRoot, "app.ico");
 
+        /// <summary>The native shell-extension DLL, dropped beside the exe for the MSIX
+        /// external-content registration of the Windows 11 top-level menu.</summary>
+        public static string ShellExtDllPath => Path.Combine(InstallRoot, "ProjectPinner.ShellExt.dll");
+
+        /// <summary>Get-AppxPackage -Name filter for the context-menu package.</summary>
+        public const string ShellExtPackageWildcard = "WaldoDevelopment.ProjectPinnerShellExt*";
+
+        /// <summary>Identifies the COM surrogate (dllhost.exe) hosting our handler, by the
+        /// CLSID fragment in its command line — used to release the DLL before overwriting.</summary>
+        public const string ShellExtClsidFragment = "A3D8F1E2";
+
         /// <summary>Settings file.</summary>
         public static string ConfigPath => Path.Combine(InstallRoot, "settings.json");
 

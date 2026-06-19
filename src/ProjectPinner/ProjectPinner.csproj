@@ -32,6 +32,15 @@
   <ItemGroup>
     <!-- Embed the icon so the WPF window titlebar can load it at runtime. -->
     <EmbeddedResource Include="../../assets/app.ico" Link="app.ico" />
+
+    <!-- Embed the signed shell-ext DLL + signed sparse MSIX so the single exe can install
+         the Windows 11 top-level context menu itself (one-click install). These are CI
+         build artifacts placed in dist/ before the exe is built; a local Linux build has
+         neither, so the modern-menu install is simply skipped there (Exists() guard). -->
+    <EmbeddedResource Include="../../dist/ProjectPinner.ShellExt.dll" Link="ProjectPinner.ShellExt.dll"
+                      Condition="Exists('../../dist/ProjectPinner.ShellExt.dll')" />
+    <EmbeddedResource Include="../../dist/ProjectPinner.msix" Link="ProjectPinner.msix"
+                      Condition="Exists('../../dist/ProjectPinner.msix')" />
   </ItemGroup>
 
   <ItemGroup>

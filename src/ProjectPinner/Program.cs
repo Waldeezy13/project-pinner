@@ -52,6 +52,12 @@ namespace ProjectPinner
                     }
                     catch { /* non-fatal */ }
                 }
+                else
+                {
+                    // MSIX install: ensure the ExplorerCommandHandler verb is registered
+                    // so it appears in the Windows 11 top-level right-click menu.
+                    try { ShellMenuService.RegisterForMsix(); } catch { }
+                }
 
                 var app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
                 app.DispatcherUnhandledException += OnDispatcherException;

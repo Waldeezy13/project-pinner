@@ -14,9 +14,8 @@
   xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
   xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
-  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap3 com desktop desktop4 rescap">
+  IgnorableNamespaces="uap uap3 com desktop rescap">
 
   <Identity
     Name="WaldoDevelopmentLLC.ProjectPinner"
@@ -69,20 +68,14 @@
         </com:Extension>
 
         <!--
-          Register the "Pin with alias to Quick Access" verb for folders.
-          Type="Directory"   → right-click on a folder in the navigation pane or
-                               in the file list.
-          This verb appears in the TOP-LEVEL Windows 11 context menu (not under
-          "Show more options") because the app has package identity via MSIX.
+          NOTE: desktop4:FileExplorerContextMenus only accepts file-type extensions
+          (e.g. .txt, *) — it does NOT support Type="Directory".
+          The folder verb is instead registered at runtime via ShellMenuService.RegisterForMsix():
+            HKCU\Software\Classes\Directory\shell\ProjectPinnerAlias\ExplorerCommandHandler
+              (Default) = {E4B8A120-71F3-4E2C-9AC5-3D8B7F2E1047}
+          With MSIX package identity the Windows 11 shell promotes this ExplorerCommandHandler
+          verb to the top-level context menu rather than "Show more options".
         -->
-        <desktop4:Extension Category="windows.fileExplorerContextMenus">
-          <desktop4:FileExplorerContextMenus>
-            <desktop4:ItemType Type="Directory">
-              <desktop4:Verb Id="PinWithAlias"
-                             Clsid="E4B8A120-71F3-4E2C-9AC5-3D8B7F2E1047"/>
-            </desktop4:ItemType>
-          </desktop4:FileExplorerContextMenus>
-        </desktop4:Extension>
 
       </Extensions>
     </Application>

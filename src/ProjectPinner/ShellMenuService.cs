@@ -49,10 +49,29 @@ namespace ProjectPinner
             catch { return null; }
         }
 
+        /// <summary>
+        /// When running as an MSIX package: registers the folder verb using ExplorerCommandHandler
+        /// (points at our IExplorerCommand CLSID). With package identity, Windows 11 promotes this
+        /// to the top-level context menu instead of "Show more options". Called at app startup.
+        /// </summary>
+        public static void RegisterForMsix()
+        {
+            string clsid = "{" + ExplorerCommandClsid.Value + "}";
+            string icon = EnsureIconFile();
+            using (var key = Registry.CurrentUser.CreateSubKey(KeyPath))
+            {
+                key.SetValue(null, MenuText);
+                if (icon != null) key.SetValue("Icon", icon);
+                // ExplorerCommandHandler tells the shell to use IExplorerCommand for this verb
+                // instead of launching a child process. Required for the top-level Win 11 menu.
+                key.SetValue("ExplorerCommandHandler", clsid);
+            }
+        }
+
         public static void Register()
         {
-            // MSIX packages register the verb via AppxManifest/IExplorerCommand — no registry needed.
-            if (IsRunningAsPackage()) return;
+            // MSIX: use RegisterForMsix() instead (IExplorerCommand path).
+            if (IsRunningAsPackage()) { RegisterForMsix(); return; }
             string exe = TargetExe();
             if (string.IsNullOrEmpty(exe)) return;
 

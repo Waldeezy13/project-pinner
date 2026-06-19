@@ -15,7 +15,7 @@ namespace ProjectPinner
         private TextBlock _previewText, _statusText, _storagePathText;
         private Button _browseButton, _createButton, _openButton, _repinButton, _removeButton,
                        _refreshButton, _selfTestButton, _shellMenuButton,
-                       _renameButton, _openStorageButton, _settingsToggle;
+                       _renameButton, _openStorageButton, _settingsToggle, _uninstallButton;
         private CheckBox _pinCheck;
         private ListBox _projectsList;
         private Border _settingsPanel;
@@ -73,6 +73,7 @@ namespace ProjectPinner
             _renameButton = Find<Button>(root, "RenameButton");
             _openStorageButton = Find<Button>(root, "OpenStorageButton");
             _settingsToggle = Find<Button>(root, "SettingsToggle");
+            _uninstallButton = Find<Button>(root, "UninstallButton");
             _pinCheck = Find<CheckBox>(root, "PinCheck");
             _projectsList = Find<ListBox>(root, "ProjectsList");
             _settingsPanel = Find<Border>(root, "SettingsPanel");
@@ -95,6 +96,7 @@ namespace ProjectPinner
             _settingsToggle.Click += (s, e) => OnToggleSettings();
             _renameButton.Click += (s, e) => OnRename();
             _openStorageButton.Click += (s, e) => OnOpenStorage();
+            _uninstallButton.Click += (s, e) => OnUninstall();
             _pinCheck.Checked += (s, e) => { _cfg.AutoPin = true; _cfg.Save(); };
             _pinCheck.Unchecked += (s, e) => { _cfg.AutoPin = false; _cfg.Save(); };
         }
@@ -299,6 +301,35 @@ namespace ProjectPinner
                 AppPaths.AppName + " — Self-test",
                 MessageBoxButton.OK,
                 report.Passed ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        }
+
+        // ---- Uninstall --------------------------------------------------------
+        private void OnUninstall()
+        {
+            string dataPath = AppPaths.InstallRoot;
+            var confirm = System.Windows.MessageBox.Show(this,
+                "Uninstall Project Pinner from this PC?\n\n" +
+                "This will remove:\n" +
+                "  • The right-click “Pin with alias” menu\n" +
+                "  • The Start Menu shortcut\n" +
+                "  • The Quick Access pin\n\n" +
+                "Your local shortcuts folder will NOT be deleted. " +
+                "Delete it manually when ready:\n" + dataPath,
+                AppPaths.AppName, MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+            if (confirm != MessageBoxResult.Yes) return;
+
+            try
+            {
+                Installer.Uninstall();
+                System.Windows.MessageBox.Show(this,
+                    "Project Pinner has been uninstalled.\n\n" +
+                    "Your shortcuts folder remains at:\n" + dataPath + "\n\n" +
+                    "Delete it manually when you’re ready.",
+                    AppPaths.AppName, MessageBoxButton.OK, MessageBoxImage.Information);
+                Close();
+            }
+            catch (Exception ex) { Status("Uninstall error: " + ex.Message); }
         }
 
         private void Status(string msg) => _statusText.Text = msg;
@@ -560,8 +591,10 @@ namespace ProjectPinner
     <StackPanel Grid.Column='1' Orientation='Horizontal'>
       <Button x:Name='ShellMenuButton' Content='Right-click menu' Style='{StaticResource LinkButton}' Margin='0,0,10,0'
               ToolTip='Turn the folder right-click Pin with alias menu on or off'/>
-      <Button x:Name='SelfTestButton' Content='Run self-test' Style='{StaticResource LinkButton}'
+      <Button x:Name='SelfTestButton' Content='Run self-test' Style='{StaticResource LinkButton}' Margin='0,0,14,0'
               ToolTip='Safe self-test: proves removing a shortcut never touches the real folder'/>
+      <Button x:Name='UninstallButton' Content='Uninstall' Style='{StaticResource LinkButton}' Foreground='#C05050'
+              ToolTip='Remove the right-click menu, Start Menu shortcut, and Quick Access pin from this PC'/>
     </StackPanel>
   </Grid>
 

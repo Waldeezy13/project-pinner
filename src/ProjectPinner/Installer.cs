@@ -65,6 +65,17 @@ namespace ProjectPinner
             catch { /* give up; the existing installed copy stays in place */ }
         }
 
+        /// <summary>
+        /// Removes everything the app set up for the current user (right-click menu, Start Menu
+        /// shortcut, Quick Access pin). Never deletes local shortcut data — the user keeps that.
+        /// </summary>
+        public static void Uninstall()
+        {
+            try { ShellMenuService.Unregister(); } catch { }
+            try { QuickAccessService.Unpin(ProjectsHubService.HubDir); } catch { }
+            try { if (File.Exists(AppPaths.StartMenuShortcut)) File.Delete(AppPaths.StartMenuShortcut); } catch { }
+        }
+
         /// <summary>Best-effort cleanup of a renamed-aside old exe from a prior update.</summary>
         public static void CleanupOldExe()
         {

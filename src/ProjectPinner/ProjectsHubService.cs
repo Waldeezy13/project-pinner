@@ -26,7 +26,35 @@ namespace ProjectPinner
             return string.IsNullOrEmpty(n) ? "Projects" : n;
         }
 
-        public static void EnsureHub() => AppPaths.EnsureDir(HubDir);
+        public static void EnsureHub()
+        {
+            AppPaths.EnsureDir(HubDir);
+            ApplyHubIcon();
+        }
+
+        /// <summary>
+        /// Writes a desktop.ini into the hub folder so Explorer shows the app icon instead of
+        /// a plain yellow folder. Folder needs the ReadOnly attribute; desktop.ini needs System+Hidden.
+        /// Failure is silently swallowed — the icon is cosmetic.
+        /// </summary>
+        private static void ApplyHubIcon()
+        {
+            try
+            {
+                if (!File.Exists(AppPaths.IconPath)) AppIcon.WriteIcoToDisk(AppPaths.IconPath);
+                if (!File.Exists(AppPaths.IconPath)) return;
+
+                string ini = Path.Combine(HubDir, "desktop.ini");
+                File.WriteAllText(ini,
+                    "[.ShellClassInfo]\r\nIconFile=" + AppPaths.IconPath + "\r\nIconIndex=0\r\n");
+                File.SetAttributes(ini, FileAttributes.Hidden | FileAttributes.System);
+
+                var di = new DirectoryInfo(HubDir);
+                if ((di.Attributes & FileAttributes.ReadOnly) == 0)
+                    di.Attributes |= FileAttributes.ReadOnly;
+            }
+            catch { }
+        }
 
         /// <summary>
         /// Renames the hub folder (moving all the shortcuts with it), updates settings, and
@@ -60,6 +88,7 @@ namespace ProjectPinner
                 if (cfg != null) { cfg.HubFolderName = clean; cfg.Save(); }
 
                 if (wasPinned) { try { PinHub(); } catch { } }
+                else { try { ApplyHubIcon(); } catch { } }
             }
             else
             {

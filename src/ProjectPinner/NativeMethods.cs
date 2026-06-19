@@ -26,6 +26,12 @@ namespace ProjectPinner
         [DllImport("dwmapi.dll", PreserveSig = true)]
         public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
+        // ---- MSIX package identity detection (kernel32) ----------------------
+        // Returns APPMODEL_ERROR_NO_PACKAGE (15700) when the process has no identity.
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        public static extern int GetCurrentPackageName(ref uint packageNameLength,
+            System.Text.StringBuilder packageName);
+
         // ---- Shell change notifications (shell32) -----------------------------
         // Tells Explorer a folder's appearance changed (e.g. desktop.ini icon update).
         public const int SHCNE_UPDATEDIR = 0x00001000;

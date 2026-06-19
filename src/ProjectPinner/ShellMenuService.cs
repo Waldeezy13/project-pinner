@@ -21,6 +21,16 @@ namespace ProjectPinner
         // folders both resolve to the Directory class in Explorer.
         private const string KeyPath = @"Software\Classes\Directory\shell\ProjectPinnerAlias";
 
+        private static bool IsRunningAsPackage()
+        {
+            try
+            {
+                uint len = 0;
+                return NativeMethods.GetCurrentPackageName(ref len, null) != 15700;
+            }
+            catch { return false; }
+        }
+
         private static string TargetExe()
         {
             string exe = AppPaths.InstalledExePath;
@@ -41,6 +51,8 @@ namespace ProjectPinner
 
         public static void Register()
         {
+            // MSIX packages register the verb via AppxManifest/IExplorerCommand — no registry needed.
+            if (IsRunningAsPackage()) return;
             string exe = TargetExe();
             if (string.IsNullOrEmpty(exe)) return;
 

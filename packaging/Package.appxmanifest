@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX manifest for Project Pinner.
+
+  Publisher is injected by the CI workflow from the Azure Trusted Signing cert
+  subject extracted from the already-signed ProjectPinner.exe. Do not hard-code
+  the Publisher here — it will be replaced by build-msix.ps1.
+
+  CLSID {E4B8A120-71F3-4E2C-9AC5-3D8B7F2E1047} must match ExplorerCommand.cs.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 com desktop desktop4 rescap">
+
+  <Identity
+    Name="WaldoDevelopmentLLC.ProjectPinner"
+    Publisher="PUBLISHER_PLACEHOLDER"
+    Version="1.0.4.0"
+    ProcessorArchitecture="x64"/>
+
+  <Properties>
+    <DisplayName>Project Pinner</DisplayName>
+    <PublisherDisplayName>Waldo Development LLC</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0"/>
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-US"/>
+  </Resources>
+
+  <Applications>
+    <Application Id="ProjectPinner" Executable="ProjectPinner.exe"
+                 EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Project Pinner"
+        Description="Friendly-named shortcuts in Quick Access for long network project numbers."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"/>
+
+      <Extensions>
+
+        <!-- Allow the exe to run as a full-trust desktop process. -->
+        <desktop:Extension Category="windows.fullTrustProcess"
+                           Executable="ProjectPinner.exe"/>
+
+        <!--
+          Register ProjectPinner.exe as a COM EXE server exposing the
+          IExplorerCommand implementation (CLSID must match ExplorerCommand.cs).
+        -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="ProjectPinner.exe"
+                           DisplayName="Project Pinner Context Menu">
+              <com:Class Id="E4B8A120-71F3-4E2C-9AC5-3D8B7F2E1047"
+                         DisplayName="Pin with alias to Quick Access"/>
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+
+        <!--
+          Register the "Pin with alias to Quick Access" verb for folders.
+          Type="Directory"   → right-click on a folder in the navigation pane or
+                               in the file list.
+          This verb appears in the TOP-LEVEL Windows 11 context menu (not under
+          "Show more options") because the app has package identity via MSIX.
+        -->
+        <desktop4:Extension Category="windows.fileExplorerContextMenus">
+          <desktop4:FileExplorerContextMenus>
+            <desktop4:ItemType Type="Directory">
+              <desktop4:Verb Id="PinWithAlias"
+                             Clsid="E4B8A120-71F3-4E2C-9AC5-3D8B7F2E1047"/>
+            </desktop4:ItemType>
+          </desktop4:FileExplorerContextMenus>
+        </desktop4:Extension>
+
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Required for windows.fullTrustProcess and COM ExeServer -->
+    <rescap:Capability Name="runFullTrust"/>
+  </Capabilities>
+
+</Package>

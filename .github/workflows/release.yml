@@ -1,27 +1,13 @@
 # Build, sign (Azure Trusted Signing), and publish a Project Pinner release.
 #
-# Mirrors the Waldo_Development_Suite signing pattern: OIDC federated auth via
-# azure/login, then azure/trusted-signing-action signs the exe in place.
+# Produces TWO artifacts:
+#   ProjectPinner.exe  — plain exe (self-installs, right-click under "Show more options")
+#   ProjectPinner.msix — MSIX package (installs per-user, right-click in TOP-LEVEL Win 11 menu)
 #
-# Run it: Actions -> release -> "Run workflow", from the `main` branch, with a
-# version like 1.0.1. (Dispatching from main makes the OIDC subject
-# `repo:Waldeezy13/project-pinner:ref:refs/heads/main`.)
+# Run: Actions -> release -> "Run workflow", branch main, version e.g. 1.0.4
 #
-# Required GH repo secrets (same values as your other apps):
-#   AZURE_TENANT_ID
-#   AZURE_CLIENT_ID     (the signing Entra app; OIDC federated - no client secret)
-#
-# Required one-time Azure step: add a federated credential on that Entra app for
-#   subject:  repo:Waldeezy13/project-pinner:ref:refs/heads/main
-#   issuer:   https://token.actions.githubusercontent.com
-#   audience: api://AzureADTokenExchange
-#
-# Optional GH repo variables (defaults already match the WDS signing account):
-#   TRUSTED_SIGNING_ENDPOINT       default: https://eus.codesigning.azure.net/
-#   TRUSTED_SIGNING_ACCOUNT        default: WDS-Signing
-#   TRUSTED_SIGNING_CERT_PROFILE   default: WaldoDevelopment-PublicTrust
-#
-# If AZURE_TENANT_ID is unset, signing is skipped and an UNSIGNED exe is released.
+# Required secrets:  AZURE_TENANT_ID, AZURE_CLIENT_ID
+# Optional vars:     TRUSTED_SIGNING_ENDPOINT / ACCOUNT / CERT_PROFILE (defaults match WDS)
 
 name: release
 
@@ -29,21 +15,19 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version, e.g. 1.0.1 (no leading v)'
+        description: 'Release version, e.g. 1.0.4 (no leading v)'
         required: true
         type: string
 
 permissions:
-  contents: write   # create the GitHub Release
+  contents: write   # create GitHub Release
   id-token: write   # OIDC federated auth to Azure Trusted Signing
 
 jobs:
   build-sign-release:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
-      # Surface secrets at job scope so `if: env.AZURE_TENANT_ID != ''` can gate
-      # the signing steps (secrets aren't readable directly in `if:`).
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       TRUSTED_SIGNING_ENDPOINT: ${{ vars.TRUSTED_SIGNING_ENDPOINT || 'https://eus.codesigning.azure.net/' }}
@@ -63,7 +47,6 @@ jobs:
         shell: pwsh
         run: dotnet build src/ProjectPinner/ProjectPinner.csproj -c Release -nologo
 
-      # OIDC handshake; azure/trusted-signing-action uses the resulting token.
       - name: Azure login (OIDC federated)
         if: env.AZURE_TENANT_ID != ''
         uses: azure/login@v2
@@ -72,8 +55,6 @@ jobs:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           subscription-id: 460c420e-f1e8-4ef3-93af-a7afbeb56c11
 
-      # azure/trusted-signing-action installs its module from PSGallery, which isn't
-      # always registered on the runner's PowerShell. Register it first.
       - name: Ensure PSGallery is registered
         if: env.AZURE_TENANT_ID != ''
         shell: pwsh
@@ -86,8 +67,8 @@ jobs:
               -Location https://www.powershellgallery.com/api/v2 -Trusted -Force -ErrorAction SilentlyContinue
           }
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
-          Get-PSRepository
 
+      # ---- Sign the exe first (Publisher extracted from this cert for the MSIX manifest) ----
       - name: Sign ProjectPinner.exe (Azure Trusted Signing)
         if: env.AZURE_TENANT_ID != ''
         uses: azure/trusted-signing-action@v0
@@ -104,26 +85,71 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
-      - name: Stage artifact + show signature
+      - name: Stage exe artifact
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item src/ProjectPinner/bin/Release/ProjectPinner.exe dist/ProjectPinner.exe -Force
           $sig = Get-AuthenticodeSignature dist/ProjectPinner.exe
-          $sha = (Get-FileHash dist/ProjectPinner.exe -Algorithm SHA256).Hash
-          Write-Host "Signature status: $($sig.Status)"
-          Write-Host "Signer:           $($sig.SignerCertificate.Subject)"
-          Write-Host "SHA-256:          $sha"
+          Write-Host "Exe signature: $($sig.Status)  —  $($sig.SignerCertificate.Subject)"
+
+      # ---- Build the MSIX (Publisher injected from the signed exe's cert) ----
+      - name: Build MSIX package
+        shell: pwsh
+        run: |
+          $v = '${{ github.event.inputs.version }}'.TrimStart('v') + '.0'
+          & packaging/build-msix.ps1 `
+            -ExePath dist/ProjectPinner.exe `
+            -OutDir  dist `
+            -Version $v
+
+      # ---- Sign the MSIX with the same cert -----------------------------------
+      - name: Sign ProjectPinner.msix (Azure Trusted Signing)
+        if: env.AZURE_TENANT_ID != ''
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
+          azure-client-id: ${{ env.AZURE_CLIENT_ID }}
+          endpoint: ${{ env.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ env.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.TRUSTED_SIGNING_CERT_PROFILE }}
+          files-folder: ${{ github.workspace }}/dist
+          files-folder-filter: msix
+          files-folder-recurse: false
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Show artifact info + build release notes
+        shell: pwsh
+        run: |
+          $exeSig  = Get-AuthenticodeSignature dist/ProjectPinner.exe
+          $msixSig = Get-AuthenticodeSignature dist/ProjectPinner.msix
+          $exeSha  = (Get-FileHash dist/ProjectPinner.exe  -Algorithm SHA256).Hash
+          $msixSha = (Get-FileHash dist/ProjectPinner.msix -Algorithm SHA256).Hash
+          Write-Host "EXE  sig: $($exeSig.Status)   signer: $($exeSig.SignerCertificate.Subject)"
+          Write-Host "MSIX sig: $($msixSig.Status)  signer: $($msixSig.SignerCertificate.Subject)"
+          Write-Host "EXE  SHA-256: $exeSha"
+          Write-Host "MSIX SHA-256: $msixSha"
           @"
           Signed build of Project Pinner — friendly Quick Access names for long network project numbers.
 
-          Download **ProjectPinner.exe** below and double-click. No installer, no admin, no .NET to install. Windows 10 (1903+) / 11.
+          ## Install options
 
-          Signed by Azure Trusted Signing (Waldo Development LLC) — no SmartScreen "unknown publisher" prompt.
+          | File | How to install | Right-click menu position |
+          |---|---|---|
+          | **ProjectPinner.msix** | Double-click → Windows install dialog, no admin | Top-level Windows 11 menu |
+          | **ProjectPinner.exe**  | Run directly, self-installs to LocalAppData, no admin | Under "Show more options" (Win 11) |
 
-          Right-click a folder → **Pin with alias to Quick Access** (Win11: under *Show more options*). Aliases are ordinary shortcuts; your network folders are never moved, renamed, or modified.
+          Both are signed by Azure Trusted Signing (Waldo Development LLC) — no SmartScreen warning.
 
-          SHA-256: ``$sha``
+          Right-click a folder → **Pin with alias to Quick Access**. Aliases are ordinary shortcuts; your network folders are never moved, renamed, or modified.
+
+          ## SHA-256 checksums
+          ```
+          ProjectPinner.exe   $exeSha
+          ProjectPinner.msix  $msixSha
+          ```
 
           © 2026 Waldo Development LLC. All rights reserved.
           "@ | Out-File -FilePath dist/notes.md -Encoding utf8
@@ -134,6 +160,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $v = '${{ github.event.inputs.version }}'.TrimStart('v')
-          gh release create "v$v" dist/ProjectPinner.exe `
+          gh release create "v$v" dist/ProjectPinner.exe dist/ProjectPinner.msix `
             --title "Project Pinner v$v" `
             --notes-file dist/notes.md

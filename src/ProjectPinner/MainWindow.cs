@@ -434,7 +434,10 @@ namespace ProjectPinner
 
     <DataTemplate x:Key='ProjectItem'>
       <StackPanel Margin='2,4'>
-        <TextBlock Text='{Binding DisplayName}' FontSize='13' FontWeight='SemiBold'/>
+        <!-- Foreground is set explicitly: inside an item data template the implicit
+             TextBlock style above isn't applied, so without this the title falls back
+             to the system default (black) and renders dark-on-dark on the card. -->
+        <TextBlock Text='{Binding DisplayName}' FontSize='13' FontWeight='SemiBold' Foreground='#E6E8EC'/>
         <TextBlock Text='{Binding Target}' FontSize='10.5' Foreground='#9AA0AA' TextTrimming='CharacterEllipsis'/>
       </StackPanel>
     </DataTemplate>

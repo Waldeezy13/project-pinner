@@ -7,12 +7,17 @@ is the property of Waldo Development LLC. The Software is made source-available
 for transparency and review only.
 
 PERMITTED:
-  - You may download and run the compiled application for its intended purpose.
+  - An individual end user may download and run the compiled application for its
+    intended purpose.
 
 NOT PERMITTED without the prior express written permission of Waldo Development LLC:
   - Copying, modifying, or creating derivative works of the source code.
   - Redistributing, sublicensing, selling, or publishing the Software or its
     source code, in whole or in part.
+  - Deploying, installing, or distributing the Software across an organization,
+    or onto devices on behalf of others (including internal, enterprise, or
+    commercial deployment). Organizational deployment requires a separate
+    written license, which is available on request.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS

@@ -51,21 +51,12 @@ the menu. **Uninstall:** open Project Pinner → **Uninstall** (removes everythi
 
 Full guide: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-## Build from source
-
-Requires the [.NET SDK](https://dotnet.microsoft.com/download) (builds the .NET Framework 4.8
-target via NuGet reference assemblies — works on Windows, macOS, or Linux):
-
-```bash
-./build.sh
-# or:
-dotnet build src/ProjectPinner/ProjectPinner.csproj -c Release
-```
-
-The output is `src/ProjectPinner/bin/Release/ProjectPinner.exe`.
-
 ## License
 
 Proprietary — © 2026 Waldo Development LLC. All rights reserved. See [LICENSE](LICENSE).
+
+Individuals may download and run the app. **Organizational or enterprise
+deployment** — installing or distributing it across a company's machines — requires a
+separate written license. Contact Waldo Development LLC to arrange one.
 
 <div align="center"><sub>Developed by <b>Waldo Development LLC</b></sub></div>

@@ -57,6 +57,7 @@ Proprietary — © 2026 Waldo Development LLC. All rights reserved. See [LICENSE
 
 Individuals may download and run the app. **Organizational or enterprise
 deployment** — installing or distributing it across a company's machines — requires a
-separate written license. Contact Waldo Development LLC to arrange one.
+separate written license. Contact Waldo Development LLC at
+[s.waldo@waldodevelopment.com](mailto:s.waldo@waldodevelopment.com) to arrange one.
 
 <div align="center"><sub>Developed by <b>Waldo Development LLC</b></sub></div>

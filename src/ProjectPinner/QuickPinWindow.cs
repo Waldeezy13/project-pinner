@@ -33,10 +33,12 @@ namespace ProjectPinner
             SizeToContent = SizeToContent.Height;     // fit content height exactly — no clipping
             ResizeMode = ResizeMode.NoResize;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            Background = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#15171C");
+            Background = Theme.WindowBrush();
             Icon = AppIcon.Get();
 
-            var root = (FrameworkElement)XamlReader.Parse(Xaml.Replace("@@PATH@@", Escape(_path)));
+            // Theme.Apply substitutes the palette @@Token@@s; @@PATH@@ is left alone (not a palette
+            // key) and filled in afterwards with the escaped folder path.
+            var root = (FrameworkElement)XamlReader.Parse(Theme.Apply(Xaml).Replace("@@PATH@@", Escape(_path)));
             Content = root;
 
             _nameBox = (TextBox)root.FindName("NameBox");
@@ -59,7 +61,7 @@ namespace ProjectPinner
             try
             {
                 var hwnd = new WindowInteropHelper(this).Handle;
-                int on = 1;
+                int on = Theme.IsDark ? 1 : 0;
                 if (NativeMethods.DwmSetWindowAttribute(hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref on, sizeof(int)) != 0)
                     NativeMethods.DwmSetWindowAttribute(hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ref on, sizeof(int));
             }
@@ -78,7 +80,18 @@ namespace ProjectPinner
             try
             {
                 _cfg.AutoPin = true; // this entry point IS "pin", regardless of saved setting
-                ProjectService.CreateProject(_nameBox.Text, _path, _cfg);
+                var link = ProjectService.CreateProject(_nameBox.Text, _path, _cfg);
+
+                // If the Quick Access pin didn't take (e.g. the shell verb was unavailable), don't
+                // close silently as if it worked — tell the user the shortcut exists but isn't pinned.
+                if (!link.Pinned)
+                {
+                    System.Windows.MessageBox.Show(this,
+                        "Created the shortcut \"" + link.DisplayName + "\", but couldn't pin the " +
+                        ProjectsHubService.HubFolderName + " folder to Quick Access automatically.\n\n" +
+                        "Open Project Pinner and click \"Pin Projects folder\" to finish.",
+                        AppPaths.AppName, MessageBoxButton.OK, MessageBoxImage.Information);
+                }
                 Close();
             }
             catch (Exception ex)
@@ -95,18 +108,18 @@ namespace ProjectPinner
         private const string Xaml = @"
 <Grid xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
       xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
-      TextElement.Foreground='#E6E8EC' TextElement.FontFamily='Segoe UI'
+      TextElement.Foreground='@@TextPrimary@@' TextElement.FontFamily='Segoe UI'
       TextOptions.TextFormattingMode='Display' Margin='18,16,18,16'>
   <Grid.Resources>
-    <Style TargetType='TextBlock'><Setter Property='Foreground' Value='#E6E8EC'/></Style>
+    <Style TargetType='TextBlock'><Setter Property='Foreground' Value='@@TextPrimary@@'/></Style>
     <Style x:Key='Label' TargetType='TextBlock'>
-      <Setter Property='Foreground' Value='#8A909A'/><Setter Property='FontSize' Value='10'/>
+      <Setter Property='Foreground' Value='@@TextMuted@@'/><Setter Property='FontSize' Value='11'/>
     </Style>
     <Style x:Key='Input' TargetType='TextBox'>
-      <Setter Property='Foreground' Value='#E6E8EC'/>
-      <Setter Property='CaretBrush' Value='#E6E8EC'/>
-      <Setter Property='Background' Value='#22262E'/>
-      <Setter Property='BorderBrush' Value='#3A3F4A'/>
+      <Setter Property='Foreground' Value='@@TextPrimary@@'/>
+      <Setter Property='CaretBrush' Value='@@TextPrimary@@'/>
+      <Setter Property='Background' Value='@@InputBg@@'/>
+      <Setter Property='BorderBrush' Value='@@InputBorder@@'/>
       <Setter Property='BorderThickness' Value='1'/>
       <Setter Property='FontSize' Value='13'/>
       <Setter Property='Padding' Value='9,5'/>
@@ -119,18 +132,18 @@ namespace ProjectPinner
               <ScrollViewer x:Name='PART_ContentHost' Margin='{TemplateBinding Padding}'/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property='IsFocused' Value='True'><Setter Property='BorderBrush' Value='#4F8CFF'/></Trigger>
+              <Trigger Property='IsFocused' Value='True'><Setter Property='BorderBrush' Value='@@Accent@@'/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
     </Style>
     <Style x:Key='Btn' TargetType='Button'>
-      <Setter Property='Foreground' Value='#E6E8EC'/>
+      <Setter Property='Foreground' Value='@@TextPrimary@@'/>
       <Setter Property='FontSize' Value='13'/>
       <Setter Property='Padding' Value='12,6'/>
       <Setter Property='Cursor' Value='Hand'/>
-      <Setter Property='Background' Value='#2B303A'/>
+      <Setter Property='Background' Value='@@BtnBg@@'/>
       <Setter Property='Template'>
         <Setter.Value>
           <ControlTemplate TargetType='Button'>
@@ -145,7 +158,7 @@ namespace ProjectPinner
       </Setter>
     </Style>
     <Style x:Key='Primary' TargetType='Button' BasedOn='{StaticResource Btn}'>
-      <Setter Property='Background' Value='#4F8CFF'/><Setter Property='Foreground' Value='White'/>
+      <Setter Property='Background' Value='@@Accent@@'/><Setter Property='Foreground' Value='@@OnAccent@@'/>
       <Setter Property='FontWeight' Value='SemiBold'/>
     </Style>
   </Grid.Resources>
@@ -154,14 +167,14 @@ namespace ProjectPinner
     <TextBlock Text='Pin with an alias' FontSize='15' FontWeight='Bold'/>
 
     <TextBlock Text='FOLDER' Style='{StaticResource Label}' Margin='1,10,0,3'/>
-    <TextBlock Text='@@PATH@@' FontSize='12' Foreground='#C7CCD4' TextTrimming='CharacterEllipsis'/>
+    <TextBlock Text='@@PATH@@' FontSize='12' Foreground='@@TextStrong@@' TextTrimming='CharacterEllipsis'/>
 
     <TextBlock Text='ALIAS' Style='{StaticResource Label}' Margin='1,10,0,4'/>
     <TextBox x:Name='NameBox' Style='{StaticResource Input}'
              ToolTip='A short, readable alias for this folder (goes in front of the project number)'/>
 
     <TextBlock Text='WILL APPEAR AS' Style='{StaticResource Label}' Margin='1,10,0,2'/>
-    <TextBlock x:Name='PreviewText' FontSize='13' Foreground='#7FB0FF' FontWeight='SemiBold'
+    <TextBlock x:Name='PreviewText' FontSize='13' Foreground='@@AccentText@@' FontWeight='SemiBold'
                TextTrimming='CharacterEllipsis'/>
 
     <StackPanel Orientation='Horizontal' HorizontalAlignment='Right' Margin='0,18,0,0'>
@@ -172,7 +185,7 @@ namespace ProjectPinner
     </StackPanel>
 
     <TextBlock Text='Developed by Waldo Development LLC' HorizontalAlignment='Center'
-               Foreground='#5A6069' FontSize='10' Margin='0,14,0,0'/>
+               Foreground='@@TextFaint@@' FontSize='10' Margin='0,14,0,0'/>
   </StackPanel>
 </Grid>";
     }

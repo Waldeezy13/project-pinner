@@ -2,8 +2,8 @@
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
   <assemblyIdentity version="1.0.0.0" name="ProjectPinner.app" />
 
-  <!-- Run as the normal user. Elevation happens only for the one-time setup,
-       via an explicit "runas" relaunch - never on a normal launch. -->
+  <!-- Always runs as the normal user. Project Pinner is fully per-user (HKCU +
+       %LOCALAPPDATA%) and never elevates - there is no admin / UAC prompt at any point. -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>

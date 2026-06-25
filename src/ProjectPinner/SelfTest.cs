@@ -13,8 +13,8 @@ namespace ProjectPinner
 
     /// <summary>
     /// Runs entirely in a local temp sandbox - never touches a network path. Proves the
-    /// two things that matter: (1) we can create a working directory symlink, and
-    /// (2) removing the link does NOT delete the real folder behind it.
+    /// two things that matter: (1) we can create a working alias shortcut (.lnk), and
+    /// (2) removing the shortcut does NOT delete the real folder behind it.
     /// </summary>
     internal static class SelfTest
     {
@@ -56,7 +56,7 @@ namespace ProjectPinner
                 return new SelfTestReport
                 {
                     Passed = true,
-                    Summary = "All checks passed - aliases are just links, and removing one is safe.",
+                    Summary = "All checks passed — aliases are just links, and removing one is safe.",
                     Details = log.ToString()
                 };
             }

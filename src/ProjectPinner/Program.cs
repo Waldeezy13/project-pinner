@@ -45,6 +45,7 @@ namespace ProjectPinner
                 var cfg = Config.Load();
                 ProjectsHubService.HubFolderName =
                     string.IsNullOrWhiteSpace(cfg.HubFolderName) ? "Projects" : cfg.HubFolderName;
+                Theme.SetMode(cfg.Theme);
 
                 // First launch / a freshly downloaded build (i.e. not yet running from the
                 // install dir) = install-or-update: copy ourselves into LocalAppData, make a
@@ -54,15 +55,10 @@ namespace ProjectPinner
                 {
                     if (!Installer.IsRunningFromInstallDir())
                     {
-                        Installer.InstallFilesForCurrentUser();  // exe, Start Menu, icon, classic verb
-
-                        // Register the signed MSIX + native DLL for the Windows 11 top-level
-                        // menu. If that succeeds, drop the classic verb so the entry isn't
-                        // duplicated under "Show more options"; if the package isn't available
-                        // (e.g. Windows 10), the classic verb remains as the fallback.
-                        bool modern = false;
-                        try { modern = ContextMenuInstaller.EnsureInstalled(); } catch { }
-                        if (modern) { try { ShellMenuService.Unregister(); } catch { } }
+                        // Install/update: copy files in, register the Start Menu + uninstall entry,
+                        // then set up the right-click menu using the correct mechanism — the modern
+                        // MSIX top-level menu on Windows 11, or the classic verb on Windows 10.
+                        RightClickMenu.Enable();
                     }
                     Installer.CleanupOldExe();
                 }

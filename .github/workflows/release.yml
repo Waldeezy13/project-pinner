@@ -74,7 +74,6 @@ jobs:
           }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item src/ProjectPinner.ShellExt/bin/Release/ProjectPinner.ShellExt.dll dist/ProjectPinner.ShellExt.dll -Force
-          Copy-Item assets/app.ico dist/app.ico -Force
 
       - name: Azure login (OIDC federated)
         if: env.AZURE_TENANT_ID != ''
@@ -139,8 +138,30 @@ jobs:
       - name: Build app exe (net48, Release, embeds signed DLL + MSIX)
         shell: pwsh
         run: |
-          dotnet build src/ProjectPinner/ProjectPinner.csproj -c Release -nologo
+          $v = '${{ github.event.inputs.version }}'.TrimStart('v')
+          if     ($v -match '^\d+\.\d+\.\d+$')        { $av = "$v.0" }
+          elseif ($v -match '^\d+\.\d+\.\d+\.\d+$')   { $av = $v }
+          else { throw "Version must be a.b.c or a.b.c.d, got '$v'." }
+
+          # The exe must carry the already-signed DLL + MSIX, or the Win11 menu silently won't install.
+          foreach ($f in 'dist/ProjectPinner.ShellExt.dll','dist/ProjectPinner.msix') {
+            if (-not (Test-Path $f)) { throw "$f is missing before the exe build — would ship a menu-less exe. Aborting." }
+          }
+
+          # Stamp the real release version into the exe (otherwise it always reports 1.0.0).
+          dotnet build src/ProjectPinner/ProjectPinner.csproj -c Release -nologo `
+            -p:Version=$v -p:InformationalVersion=$v -p:FileVersion=$av -p:AssemblyVersion=$av
           Copy-Item src/ProjectPinner/bin/Release/ProjectPinner.exe dist/ProjectPinner.exe -Force
+
+          # Hard-fail if the built exe did NOT actually embed both payloads (Condition=Exists could
+          # have silently skipped them). Reading manifest resource names does not execute the exe.
+          $names = [Reflection.Assembly]::LoadFile((Resolve-Path 'dist/ProjectPinner.exe')).GetManifestResourceNames()
+          foreach ($need in 'ProjectPinner.ShellExt.dll','ProjectPinner.msix') {
+            if (-not ($names | Where-Object { $_ -like "*$need" })) {
+              throw "Built exe is missing embedded resource '$need'. Aborting (would ship a menu-less build)."
+            }
+          }
+          Write-Host "Embedded resources OK: $($names -join ', ')"
 
       - name: Sign exe (Azure Trusted Signing)
         if: env.AZURE_TENANT_ID != ''
@@ -164,6 +185,11 @@ jobs:
           foreach ($f in 'ProjectPinner.exe','ProjectPinner.ShellExt.dll','ProjectPinner.msix') {
             $sig = Get-AuthenticodeSignature "dist/$f"
             Write-Host "$f  -> $($sig.Status)  $($sig.SignerCertificate.Subject)"
+            # When signing is enabled (it is required for a release), a non-Valid signature must
+            # block the release — otherwise we'd ship an exe whose "no SmartScreen" promise is false.
+            if ($env:AZURE_TENANT_ID -and $sig.Status -ne 'Valid') {
+              throw "$f signature status is '$($sig.Status)', expected 'Valid'. Aborting release."
+            }
           }
           $exeSha = (Get-FileHash dist/ProjectPinner.exe -Algorithm SHA256).Hash
           @"

@@ -27,6 +27,16 @@ namespace ProjectPinner
             FindResource(DllResourceSuffix) != null && FindResource(MsixResourceSuffix) != null;
 
         /// <summary>
+        /// Fast, allocation-free proxy for "the Windows 11 modern menu is installed", used to drive
+        /// the in-app toggle's On/Off label without spawning PowerShell on every UI refresh. The
+        /// installer drops the shell-ext DLL and registers the package together, and <see cref="Remove"/>
+        /// deletes the DLL, so the DLL's presence tracks the modern menu's installed state closely
+        /// enough for a label. Authoritative package state is only ever needed at install/remove time.
+        /// </summary>
+        public static bool IsLikelyInstalled =>
+            HasEmbeddedPackage && File.Exists(AppPaths.ShellExtDllPath);
+
+        /// <summary>
         /// Drops the shell-ext DLL beside the installed exe and (re)registers the MSIX so the
         /// top-level menu works. Idempotent; also performs upgrades (kills the loaded handler
         /// first, removes the old package, adds the new one). Returns true if the package

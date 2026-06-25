@@ -43,15 +43,15 @@ publisher"** warning.
 Either way: open Quick Access → **Projects** → click your alias to jump to the project.
 
 In the app's list you can **Open** a project, **Pin Projects folder** (re-pin the hub if you
-ever unpin it), or **Remove link** (deletes only that shortcut).
+ever unpin it), or **Remove** (deletes only that shortcut).
 
 ---
 
 ## 4. How to test it (on Windows)
 
 ### Test A — Self-test (proves safety, no network needed)
-App → **Run self-test**. It creates a temp folder + file, makes a friendly shortcut to it,
-deletes the shortcut, and **verifies the folder and file are untouched**. Expect:
+App → **Settings** → **Run safety self-test**. It creates a temp folder + file, makes a friendly
+shortcut to it, deletes the shortcut, and **verifies the folder and file are untouched**. Expect:
 *"All checks passed — aliases are just links, and removing one is safe."*
 
 ### Test B — Local dry run
@@ -59,7 +59,7 @@ deletes the shortcut, and **verifies the folder and file are untouched**. Expect
 2. App → Browse to it → name `Test Project` → **Create & Pin**.
 3. Quick Access now shows a **Projects** folder → open it → you see **`Test Project - 9999999`**
    → it opens `C:\Temp\9999999`.
-4. Select it → **Remove link** → confirm the shortcut is gone but `C:\Temp\9999999` and its
+4. Select it → **Remove** → confirm the shortcut is gone but `C:\Temp\9999999` and its
    file remain.
 
 ### Test C — Right-click a real network folder
@@ -70,10 +70,13 @@ live project. Remove it and confirm the network folder is untouched.
 ---
 
 ## 5. Good to know
-- **Rename the hub / see where it lives:** click **Folder name & location** (top-right of the
-  app) to expand a panel where you can rename the Quick Access folder (default "Projects") and
-  see/open its local path. Renaming just renames the **local** folder and re-pins it — your
-  network folders are never moved or renamed.
+- **Settings panel:** click **Settings** (top-right of the app) to expand a panel with the
+  appearance (theme) controls, the Quick Access folder name/location, and the safety self-test.
+- **Light / Dark theme:** in **Settings → Appearance** pick **Auto** (matches your Windows
+  light/dark setting), **Light**, or **Dark**. High Contrast mode is respected automatically.
+- **Rename the hub / see where it lives:** in **Settings**, rename the Quick Access folder
+  (default "Projects") and see/open its local path. Renaming just renames the **local** folder
+  and re-pins it — your network folders are never moved or renamed.
 - **Where it lives:** by default `%LOCALAPPDATA%\ProjectPinner\Projects`, holding one `.lnk`
   per project. The alias = the shortcut's filename.
 - **Update:** download the new `ProjectPinner.exe` and run it — it replaces the installed copy

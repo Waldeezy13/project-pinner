@@ -32,6 +32,10 @@ namespace ProjectPinner
         [DataMember(Name = "resolveUncForMappedDrives")]
         public bool ResolveUncForMappedDrives { get; set; } = true;
 
+        /// <summary>UI theme: "auto" (follow the OS), "light", or "dark". High Contrast always wins.</summary>
+        [DataMember(Name = "theme")]
+        public string Theme { get; set; } = "auto";
+
         // DataContractJsonSerializer creates the object without running constructors or
         // property initializers, so members missing from the JSON would otherwise default
         // to false/null. Re-apply the intended defaults before populating from the file.
@@ -42,6 +46,7 @@ namespace ProjectPinner
             HubFolderName = "Projects";
             AutoPin = true;
             ResolveUncForMappedDrives = true;
+            Theme = "auto";
         }
 
         public static Config Load()
@@ -58,6 +63,7 @@ namespace ProjectPinner
                         {
                             if (string.IsNullOrEmpty(cfg.Separator)) cfg.Separator = " - ";
                             if (string.IsNullOrWhiteSpace(cfg.HubFolderName)) cfg.HubFolderName = "Projects";
+                            if (string.IsNullOrWhiteSpace(cfg.Theme)) cfg.Theme = "auto";
                             return cfg;
                         }
                     }

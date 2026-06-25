@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Markup;
 
@@ -12,10 +13,11 @@ namespace ProjectPinner
         private readonly Config _cfg;
 
         private TextBox _pathBox, _nameBox, _hubNameBox;
-        private TextBlock _previewText, _statusText, _storagePathText;
+        private TextBlock _previewText, _statusText, _storagePathText, _emptyHint;
         private Button _browseButton, _createButton, _openButton, _repinButton, _removeButton,
                        _refreshButton, _selfTestButton, _shellMenuButton,
-                       _renameButton, _openStorageButton, _settingsToggle, _uninstallButton;
+                       _renameButton, _openStorageButton, _settingsToggle, _uninstallButton,
+                       _themeAutoButton, _themeLightButton, _themeDarkButton;
         private CheckBox _pinCheck;
         private ListBox _projectsList;
         private Border _settingsPanel;
@@ -30,33 +32,61 @@ namespace ProjectPinner
             Title = AppPaths.AppName;
             Width = 740; Height = 500; MinWidth = 660; MinHeight = 430;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            Background = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#15171C");
             Icon = AppIcon.Get();
 
-            var content = (FrameworkElement)XamlReader.Parse(Xaml);
-            Content = content;
-
-            BindControls(content);
-            WireEvents();
-            UpdatePreview();
-            RefreshStorageInfo();
-
-            // Ensure hub folder exists and has the custom icon applied (desktop.ini).
-            // Must run at startup so existing installs pick it up on first launch of a new build.
+            // Ensure the hub folder exists (with its custom icon) and clear out any legacy
+            // wrongly-named pins, once, before the list is first built. Must run at startup so
+            // existing installs pick up the hub icon on first launch of a new build.
             try { ProjectsHubService.EnsureHub(); } catch { }
-
             int cleared = 0;
             try { cleared = ProjectService.CleanupLegacyPins(); } catch { }
 
-            RefreshList();
-            UpdateReadiness();
+            LoadThemedContent();
 
             if (cleared > 0)
                 Status("Cleaned up " + cleared + " old wrongly-named pin(s) from a previous version.");
         }
 
+        /// <summary>
+        /// Parses the XAML with the active theme's palette substituted in, then (re)binds and wires
+        /// everything. Called once at startup and again whenever the user switches theme — rebuilding
+        /// the content is the simplest robust way to re-skin a string-parsed XAML tree.
+        /// </summary>
+        private void LoadThemedContent()
+        {
+            // Preserve whatever the user was reading in the status line across a re-skin (the rebuilt
+            // tree starts blank and RefreshList would otherwise reset it to the project count).
+            string prevStatus = _statusText?.Text;
+
+            Background = Theme.WindowBrush();
+
+            var content = (FrameworkElement)XamlReader.Parse(Theme.Apply(Xaml));
+            Content = content;
+
+            BindControls(content);
+            WireEvents();
+
+            // Restore the open/closed state of the settings panel across a theme reload.
+            _settingsPanel.Visibility = _settingsOpen ? Visibility.Visible : Visibility.Collapsed;
+            _settingsToggle.Content = (_settingsOpen ? "▾  " : "▸  ") + "Settings";
+
+            UpdatePreview();
+            RefreshStorageInfo();
+            RefreshList();
+            UpdateReadiness();
+            UpdateThemeButtons();
+
+            if (!string.IsNullOrEmpty(prevStatus)) Status(prevStatus);
+        }
+
         private T Find<T>(FrameworkElement root, string name) where T : FrameworkElement
-            => (T)root.FindName(name);
+        {
+            // A null here means a XAML x:Name was renamed/removed; fail with the name rather than a
+            // bare NullReferenceException later when the field is first used.
+            if (!(root.FindName(name) is T el))
+                throw new InvalidOperationException("XAML control not found: " + name);
+            return el;
+        }
 
         private void BindControls(FrameworkElement root)
         {
@@ -66,6 +96,7 @@ namespace ProjectPinner
             _previewText = Find<TextBlock>(root, "PreviewText");
             _statusText = Find<TextBlock>(root, "StatusText");
             _storagePathText = Find<TextBlock>(root, "StoragePathText");
+            _emptyHint = Find<TextBlock>(root, "EmptyHint");
             _browseButton = Find<Button>(root, "BrowseButton");
             _createButton = Find<Button>(root, "CreateButton");
             _openButton = Find<Button>(root, "OpenButton");
@@ -78,6 +109,9 @@ namespace ProjectPinner
             _openStorageButton = Find<Button>(root, "OpenStorageButton");
             _settingsToggle = Find<Button>(root, "SettingsToggle");
             _uninstallButton = Find<Button>(root, "UninstallButton");
+            _themeAutoButton = Find<Button>(root, "ThemeAutoButton");
+            _themeLightButton = Find<Button>(root, "ThemeLightButton");
+            _themeDarkButton = Find<Button>(root, "ThemeDarkButton");
             _pinCheck = Find<CheckBox>(root, "PinCheck");
             _projectsList = Find<ListBox>(root, "ProjectsList");
             _settingsPanel = Find<Border>(root, "SettingsPanel");
@@ -89,6 +123,8 @@ namespace ProjectPinner
             _browseButton.Click += (s, e) => OnBrowse();
             _pathBox.TextChanged += (s, e) => UpdatePreview();
             _nameBox.TextChanged += (s, e) => UpdatePreview();
+            _pathBox.KeyDown += OnAddFormKeyDown;
+            _nameBox.KeyDown += OnAddFormKeyDown;
             _createButton.Click += (s, e) => OnCreate();
             _projectsList.SelectionChanged += (s, e) => UpdateSelectionButtons();
             _openButton.Click += (s, e) => OnOpen();
@@ -101,22 +137,70 @@ namespace ProjectPinner
             _renameButton.Click += (s, e) => OnRename();
             _openStorageButton.Click += (s, e) => OnOpenStorage();
             _uninstallButton.Click += (s, e) => OnUninstall();
+            _themeAutoButton.Click += (s, e) => OnSetTheme("auto");
+            _themeLightButton.Click += (s, e) => OnSetTheme("light");
+            _themeDarkButton.Click += (s, e) => OnSetTheme("dark");
             _pinCheck.Checked += (s, e) => { _cfg.AutoPin = true; _cfg.Save(); };
             _pinCheck.Unchecked += (s, e) => { _cfg.AutoPin = false; _cfg.Save(); };
         }
 
-        // ---- Dark titlebar -----------------------------------------------------
+        private void OnAddFormKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter) OnCreate();
+        }
+
+        // ---- Titlebar (matches the active theme) -------------------------------
         protected override void OnSourceInitialized(EventArgs e)
         {
             base.OnSourceInitialized(e);
+            ApplyDarkTitlebar();
+        }
+
+        /// <summary>Sets the immersive titlebar to dark or light to match the active theme. Safe to
+        /// call before the window has a handle (it simply no-ops) and again after a theme switch.</summary>
+        private void ApplyDarkTitlebar()
+        {
             try
             {
                 var hwnd = new WindowInteropHelper(this).Handle;
-                int on = 1;
+                if (hwnd == IntPtr.Zero) return;
+                int on = Theme.IsDark ? 1 : 0;
                 if (NativeMethods.DwmSetWindowAttribute(hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref on, sizeof(int)) != 0)
                     NativeMethods.DwmSetWindowAttribute(hwnd, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ref on, sizeof(int));
             }
-            catch { /* older Windows: light titlebar, still fully functional */ }
+            catch { /* older Windows: titlebar stays default, still fully functional */ }
+        }
+
+        // ---- Theme -------------------------------------------------------------
+        private void OnSetTheme(string mode)
+        {
+            _cfg.Theme = mode;
+            _cfg.Save();
+            Theme.SetMode(mode);
+            LoadThemedContent();   // re-skin with the new palette
+            ApplyDarkTitlebar();   // window has a handle by now, so this takes effect immediately
+            Status("Theme set to " + mode + ".");
+        }
+
+        private void UpdateThemeButtons()
+        {
+            SetSegmentState(_themeAutoButton, Theme.Mode == AppTheme.Auto);
+            SetSegmentState(_themeLightButton, Theme.Mode == AppTheme.Light);
+            SetSegmentState(_themeDarkButton, Theme.Mode == AppTheme.Dark);
+        }
+
+        private static void SetSegmentState(Button b, bool active)
+        {
+            if (b == null) return;
+            b.Background = ThemeBrush(active ? "Accent" : "BtnBg");
+            b.Foreground = ThemeBrush(active ? "OnAccent" : "TextSecondary");
+            b.FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal;
+        }
+
+        private static System.Windows.Media.Brush ThemeBrush(string token)
+        {
+            try { return (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString(Theme.Get(token)); }
+            catch { return System.Windows.Media.Brushes.Gray; }
         }
 
         // ---- Add a project -----------------------------------------------------
@@ -147,14 +231,13 @@ namespace ProjectPinner
         {
             try
             {
-                _cfg.AutoPin = _pinCheck.IsChecked == true;
                 var link = ProjectService.CreateProject(_nameBox.Text, _pathBox.Text, _cfg);
                 _nameBox.Text = "";
                 _pathBox.Text = "";
                 RefreshList();
                 Status(link.Pinned
                     ? "Added \"" + link.DisplayName + "\" (folder pinned)."
-                    : "Added \"" + link.DisplayName + "\" — click 'Pin folder' to pin it.");
+                    : "Added \"" + link.DisplayName + "\" — click 'Pin Projects folder' to pin it.");
             }
             catch (Exception ex)
             {
@@ -207,6 +290,7 @@ namespace ProjectPinner
         {
             var items = ProjectService.ListProjects();
             _projectsList.ItemsSource = items;
+            _emptyHint.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             UpdateSelectionButtons();
             Status(items.Count == 0 ? "No projects yet." : items.Count + " project(s).");
         }
@@ -216,7 +300,7 @@ namespace ProjectPinner
             bool has = Selected != null;
             _openButton.IsEnabled = has;
             _removeButton.IsEnabled = has;
-            // "Pin folder" acts on the hub, not a selection - always enabled.
+            // "Pin Projects folder" acts on the hub, not a selection - always enabled.
         }
 
         // ---- Settings (collapsible) --------------------------------------------
@@ -224,7 +308,7 @@ namespace ProjectPinner
         {
             _settingsOpen = !_settingsOpen;
             _settingsPanel.Visibility = _settingsOpen ? Visibility.Visible : Visibility.Collapsed;
-            _settingsToggle.Content = (_settingsOpen ? "▾  " : "▸  ") + "Folder name & location";
+            _settingsToggle.Content = (_settingsOpen ? "▾  " : "▸  ") + "Settings";
         }
 
         private void RefreshStorageInfo()
@@ -271,7 +355,7 @@ namespace ProjectPinner
         {
             try
             {
-                bool on = ShellMenuService.IsRegistered();
+                bool on = RightClickMenu.IsEnabled();
                 _shellMenuButton.Content = on ? "Right-click menu: On" : "Right-click menu: Off";
             }
             catch { _shellMenuButton.Content = "Right-click menu"; }
@@ -281,17 +365,10 @@ namespace ProjectPinner
         {
             try
             {
-                if (ShellMenuService.IsRegistered())
-                {
-                    ShellMenuService.Unregister();
-                    Status("Removed the right-click \"Pin with alias\" menu entry.");
-                }
-                else
-                {
-                    Installer.InstallFilesForCurrentUser(); // ensures the installed exe exists, then registers
-                    ShellMenuService.Register();
-                    Status("Added \"Pin with alias to Quick Access\" to the folder right-click menu.");
-                }
+                string status = RightClickMenu.IsEnabled()
+                    ? RightClickMenu.Disable()
+                    : RightClickMenu.Enable();
+                Status(status);
             }
             catch (Exception ex) { Status("Couldn't change the right-click menu: " + ex.Message); }
             UpdateShellMenuButton();
@@ -334,27 +411,28 @@ namespace ProjectPinner
 
         private void Status(string msg) => _statusText.Text = msg;
 
-        // ---- UI (runtime-parsed XAML; single quotes avoid C# escaping) ---------
+        // ---- UI (runtime-parsed XAML; @@Token@@ placeholders are replaced with the active
+        //         theme's palette by Theme.Apply before parsing; single quotes avoid C# escaping) --
         private const string Xaml = @"
 <Grid xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
       xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
-      TextElement.Foreground='#E6E8EC' TextElement.FontFamily='Segoe UI'
+      TextElement.Foreground='@@TextPrimary@@' TextElement.FontFamily='Segoe UI'
       TextOptions.TextFormattingMode='Display' Margin='0'>
   <Grid.Resources>
     <Style TargetType='TextBlock'>
-      <Setter Property='Foreground' Value='#E6E8EC'/>
+      <Setter Property='Foreground' Value='@@TextPrimary@@'/>
     </Style>
 
     <Style x:Key='Label' TargetType='TextBlock'>
-      <Setter Property='Foreground' Value='#8A909A'/>
-      <Setter Property='FontSize' Value='10'/>
+      <Setter Property='Foreground' Value='@@TextMuted@@'/>
+      <Setter Property='FontSize' Value='11'/>
     </Style>
 
     <Style x:Key='Input' TargetType='TextBox'>
-      <Setter Property='Foreground' Value='#E6E8EC'/>
-      <Setter Property='CaretBrush' Value='#E6E8EC'/>
-      <Setter Property='Background' Value='#22262E'/>
-      <Setter Property='BorderBrush' Value='#3A3F4A'/>
+      <Setter Property='Foreground' Value='@@TextPrimary@@'/>
+      <Setter Property='CaretBrush' Value='@@TextPrimary@@'/>
+      <Setter Property='Background' Value='@@InputBg@@'/>
+      <Setter Property='BorderBrush' Value='@@InputBorder@@'/>
       <Setter Property='BorderThickness' Value='1'/>
       <Setter Property='FontSize' Value='13'/>
       <Setter Property='Padding' Value='9,5'/>
@@ -368,7 +446,7 @@ namespace ProjectPinner
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property='IsFocused' Value='True'>
-                <Setter Property='BorderBrush' Value='#4F8CFF'/>
+                <Setter Property='BorderBrush' Value='@@Accent@@'/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -377,12 +455,12 @@ namespace ProjectPinner
     </Style>
 
     <Style x:Key='BtnBase' TargetType='Button'>
-      <Setter Property='Foreground' Value='#E6E8EC'/>
+      <Setter Property='Foreground' Value='@@TextPrimary@@'/>
       <Setter Property='FontSize' Value='13'/>
       <Setter Property='Padding' Value='10,6'/>
       <Setter Property='Cursor' Value='Hand'/>
       <Setter Property='SnapsToDevicePixels' Value='True'/>
-      <Setter Property='Background' Value='#2B303A'/>
+      <Setter Property='Background' Value='@@BtnBg@@'/>
       <Setter Property='Template'>
         <Setter.Value>
           <ControlTemplate TargetType='Button'>
@@ -395,8 +473,8 @@ namespace ProjectPinner
                 <Setter TargetName='b' Property='Opacity' Value='0.88'/>
               </Trigger>
               <Trigger Property='IsEnabled' Value='False'>
-                <Setter TargetName='b' Property='Background' Value='#262A32'/>
-                <Setter Property='Foreground' Value='#6B7079'/>
+                <Setter TargetName='b' Property='Background' Value='@@BtnDisabledBg@@'/>
+                <Setter Property='Foreground' Value='@@TextDisabled@@'/>
                 <Setter Property='Cursor' Value='Arrow'/>
               </Trigger>
             </ControlTemplate.Triggers>
@@ -406,29 +484,36 @@ namespace ProjectPinner
     </Style>
 
     <Style x:Key='PrimaryButton' TargetType='Button' BasedOn='{StaticResource BtnBase}'>
-      <Setter Property='Background' Value='#4F8CFF'/>
-      <Setter Property='Foreground' Value='White'/>
+      <Setter Property='Background' Value='@@Accent@@'/>
+      <Setter Property='Foreground' Value='@@OnAccent@@'/>
       <Setter Property='FontWeight' Value='SemiBold'/>
     </Style>
 
     <Style x:Key='GhostButton' TargetType='Button' BasedOn='{StaticResource BtnBase}'>
-      <Setter Property='Background' Value='#2B303A'/>
+      <Setter Property='Background' Value='@@BtnBg@@'/>
+    </Style>
+
+    <Style x:Key='SegButton' TargetType='Button' BasedOn='{StaticResource BtnBase}'>
+      <Setter Property='Background' Value='@@BtnBg@@'/>
+      <Setter Property='Foreground' Value='@@TextSecondary@@'/>
+      <Setter Property='FontSize' Value='12'/>
+      <Setter Property='Padding' Value='14,4'/>
     </Style>
 
     <Style x:Key='DangerButton' TargetType='Button' BasedOn='{StaticResource BtnBase}'>
-      <Setter Property='Background' Value='#3A2A2E'/>
-      <Setter Property='Foreground' Value='#FF8A82'/>
+      <Setter Property='Background' Value='@@DangerBg@@'/>
+      <Setter Property='Foreground' Value='@@DangerFg@@'/>
     </Style>
 
     <Style x:Key='LinkButton' TargetType='Button' BasedOn='{StaticResource BtnBase}'>
       <Setter Property='Background' Value='Transparent'/>
-      <Setter Property='Foreground' Value='#9AA0AA'/>
+      <Setter Property='Foreground' Value='@@TextSecondary@@'/>
       <Setter Property='Padding' Value='4,2'/>
       <Setter Property='FontSize' Value='11.5'/>
     </Style>
 
     <Style TargetType='CheckBox'>
-      <Setter Property='Foreground' Value='#C7CCD4'/>
+      <Setter Property='Foreground' Value='@@TextStrong@@'/>
       <Setter Property='FontSize' Value='12'/>
     </Style>
 
@@ -437,8 +522,8 @@ namespace ProjectPinner
         <!-- Foreground is set explicitly: inside an item data template the implicit
              TextBlock style above isn't applied, so without this the title falls back
              to the system default (black) and renders dark-on-dark on the card. -->
-        <TextBlock Text='{Binding DisplayName}' FontSize='13' FontWeight='SemiBold' Foreground='#E6E8EC'/>
-        <TextBlock Text='{Binding Target}' FontSize='10.5' Foreground='#9AA0AA' TextTrimming='CharacterEllipsis'/>
+        <TextBlock Text='{Binding DisplayName}' FontSize='13' FontWeight='SemiBold' Foreground='@@TextPrimary@@'/>
+        <TextBlock Text='{Binding Target}' FontSize='10.5' Foreground='@@TextSecondary@@' TextTrimming='CharacterEllipsis'/>
       </StackPanel>
     </DataTemplate>
 
@@ -460,10 +545,10 @@ namespace ProjectPinner
                   </Border>
                   <ControlTemplate.Triggers>
                     <Trigger Property='IsMouseOver' Value='True'>
-                      <Setter TargetName='bd' Property='Background' Value='#20252E'/>
+                      <Setter TargetName='bd' Property='Background' Value='@@ItemHover@@'/>
                     </Trigger>
                     <Trigger Property='IsSelected' Value='True'>
-                      <Setter TargetName='bd' Property='Background' Value='#26344A'/>
+                      <Setter TargetName='bd' Property='Background' Value='@@ItemSelected@@'/>
                     </Trigger>
                   </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -489,40 +574,64 @@ namespace ProjectPinner
     <StackPanel Grid.Column='0'>
       <TextBlock Text='Project Pinner' FontSize='15' FontWeight='Bold'/>
       <TextBlock Text='Alias shortcuts in one folder, pinned to Quick Access.'
-                 FontSize='11' Foreground='#9AA0AA' Margin='0,1,0,0'/>
+                 FontSize='11' Foreground='@@TextSecondary@@' Margin='0,1,0,0'/>
     </StackPanel>
-    <Button x:Name='SettingsToggle' Grid.Column='1' Content='▸  Folder name &amp; location'
+    <Button x:Name='SettingsToggle' Grid.Column='1' Content='&#9656;  Settings'
             Style='{StaticResource LinkButton}' VerticalAlignment='Top'
-            ToolTip='Rename the Quick Access folder, or see and open where shortcuts are stored locally'/>
+            ToolTip='Theme, the Quick Access folder name and location, and the safety self-test'/>
   </Grid>
 
   <!-- Settings (collapsible) -->
   <Border x:Name='SettingsPanel' Grid.Row='1' Margin='14,2,14,4' CornerRadius='8'
-          Background='#171A20' BorderBrush='#2B303A' BorderThickness='1' Padding='12,10' Visibility='Collapsed'>
-    <Grid>
-      <Grid.ColumnDefinitions><ColumnDefinition Width='*'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>
-      <StackPanel Grid.Column='0' Margin='0,0,8,0'>
-        <TextBlock Text='QUICK ACCESS FOLDER NAME' Style='{StaticResource Label}'/>
-        <Grid Margin='0,4,0,0'>
-          <Grid.ColumnDefinitions><ColumnDefinition Width='*'/><ColumnDefinition Width='Auto'/></Grid.ColumnDefinitions>
-          <TextBox x:Name='HubNameBox' Grid.Column='0' Style='{StaticResource Input}'
-                   ToolTip='The name this folder shows under Quick Access (e.g. Projects, Active Jobs)'/>
-          <Button x:Name='RenameButton' Grid.Column='1' Content='Rename' Style='{StaticResource GhostButton}' Margin='6,0,0,0'
-                  ToolTip='Rename the local folder and re-pin it. Your network folders are not affected.'/>
-        </Grid>
-      </StackPanel>
-      <StackPanel Grid.Column='1' Margin='8,0,0,0'>
-        <TextBlock Text='STORED LOCALLY (only shortcuts)' Style='{StaticResource Label}' TextTrimming='CharacterEllipsis'
-                   ToolTip='Just shortcuts live here — your network folders are never moved or renamed.'/>
-        <Grid Margin='0,4,0,0'>
-          <Grid.ColumnDefinitions><ColumnDefinition Width='*'/><ColumnDefinition Width='Auto'/></Grid.ColumnDefinitions>
-          <TextBlock x:Name='StoragePathText' Grid.Column='0' FontSize='11' Foreground='#C7CCD4'
-                     VerticalAlignment='Center' TextTrimming='CharacterEllipsis'/>
-          <Button x:Name='OpenStorageButton' Grid.Column='1' Content='Open' Style='{StaticResource GhostButton}' Margin='6,0,0,0'
-                  ToolTip='Open the local folder that holds your shortcuts'/>
-        </Grid>
-      </StackPanel>
-    </Grid>
+          Background='@@PanelBg@@' BorderBrush='@@Border@@' BorderThickness='1' Padding='12,10' Visibility='Collapsed'>
+    <StackPanel>
+      <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width='*'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>
+        <StackPanel Grid.Column='0' Margin='0,0,8,0'>
+          <TextBlock Text='QUICK ACCESS FOLDER NAME' Style='{StaticResource Label}'/>
+          <Grid Margin='0,4,0,0'>
+            <Grid.ColumnDefinitions><ColumnDefinition Width='*'/><ColumnDefinition Width='Auto'/></Grid.ColumnDefinitions>
+            <TextBox x:Name='HubNameBox' Grid.Column='0' Style='{StaticResource Input}'
+                     ToolTip='The name this folder shows under Quick Access (e.g. Projects, Active Jobs)'/>
+            <Button x:Name='RenameButton' Grid.Column='1' Content='Rename' Style='{StaticResource GhostButton}' Margin='6,0,0,0'
+                    ToolTip='Rename the local folder and re-pin it. Your network folders are not affected.'/>
+          </Grid>
+        </StackPanel>
+        <StackPanel Grid.Column='1' Margin='8,0,0,0'>
+          <TextBlock Text='STORED LOCALLY (only shortcuts)' Style='{StaticResource Label}' TextTrimming='CharacterEllipsis'
+                     ToolTip='Just shortcuts live here — your network folders are never moved or renamed.'/>
+          <Grid Margin='0,4,0,0'>
+            <Grid.ColumnDefinitions><ColumnDefinition Width='*'/><ColumnDefinition Width='Auto'/></Grid.ColumnDefinitions>
+            <TextBlock x:Name='StoragePathText' Grid.Column='0' FontSize='11' Foreground='@@TextStrong@@'
+                       VerticalAlignment='Center' TextTrimming='CharacterEllipsis'/>
+            <Button x:Name='OpenStorageButton' Grid.Column='1' Content='Open' Style='{StaticResource GhostButton}' Margin='6,0,0,0'
+                    ToolTip='Open the local folder that holds your shortcuts'/>
+          </Grid>
+        </StackPanel>
+      </Grid>
+
+      <Border Height='1' Background='@@Border@@' Margin='0,12,0,10'/>
+
+      <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width='*'/><ColumnDefinition Width='Auto'/></Grid.ColumnDefinitions>
+        <StackPanel Grid.Column='0'>
+          <TextBlock Text='APPEARANCE' Style='{StaticResource Label}'/>
+          <StackPanel Orientation='Horizontal' Margin='0,5,0,0'>
+            <Button x:Name='ThemeAutoButton' Content='Auto' Style='{StaticResource SegButton}' Margin='0,0,6,0'
+                    ToolTip='Match the Windows light/dark setting'/>
+            <Button x:Name='ThemeLightButton' Content='Light' Style='{StaticResource SegButton}' Margin='0,0,6,0'
+                    ToolTip='Always use the light theme'/>
+            <Button x:Name='ThemeDarkButton' Content='Dark' Style='{StaticResource SegButton}'
+                    ToolTip='Always use the dark theme'/>
+          </StackPanel>
+        </StackPanel>
+        <StackPanel Grid.Column='1' VerticalAlignment='Bottom'>
+          <Button x:Name='SelfTestButton' Content='Run safety self-test' Style='{StaticResource LinkButton}'
+                  HorizontalAlignment='Right'
+                  ToolTip='Safe self-test: proves removing a shortcut never touches the real folder'/>
+        </StackPanel>
+      </Grid>
+    </StackPanel>
   </Border>
 
   <!-- Body: two columns (add form | project list) -->
@@ -532,8 +641,8 @@ namespace ProjectPinner
       <ColumnDefinition Width='*'/>
     </Grid.ColumnDefinitions>
 
-    <Border Grid.Column='0' Margin='0,0,6,0' CornerRadius='10' Background='#1B1E25'
-            BorderBrush='#2B303A' BorderThickness='1' Padding='12'>
+    <Border Grid.Column='0' Margin='0,0,6,0' CornerRadius='10' Background='@@CardBg@@'
+            BorderBrush='@@Border@@' BorderThickness='1' Padding='12'>
       <StackPanel>
         <TextBlock Text='Add a project' FontSize='13.5' FontWeight='SemiBold' Margin='0,0,0,8'/>
         <TextBlock Text='PROJECT FOLDER (network path)' Style='{StaticResource Label}' Margin='1,0,0,4'/>
@@ -548,7 +657,7 @@ namespace ProjectPinner
         <TextBox x:Name='NameBox' Style='{StaticResource Input}'
                  ToolTip='A short, readable alias for this folder (goes in front of the project number)'/>
         <TextBlock Text='WILL APPEAR AS' Style='{StaticResource Label}' Margin='1,7,0,3'/>
-        <TextBlock x:Name='PreviewText' FontSize='13' Foreground='#7FB0FF' FontWeight='SemiBold' TextTrimming='CharacterEllipsis'
+        <TextBlock x:Name='PreviewText' FontSize='13' Foreground='@@AccentText@@' FontWeight='SemiBold' TextTrimming='CharacterEllipsis'
                    ToolTip='Preview of the shortcut name as it will appear in your Projects folder'/>
         <CheckBox x:Name='PinCheck' Content='Pin folder to Quick Access' Margin='1,7,0,0'
                   ToolTip='Also pin the Projects folder to Quick Access (needed only once)'/>
@@ -558,8 +667,8 @@ namespace ProjectPinner
       </StackPanel>
     </Border>
 
-    <Border Grid.Column='1' Margin='6,0,0,0' CornerRadius='10' Background='#1B1E25'
-            BorderBrush='#2B303A' BorderThickness='1' Padding='11,10'>
+    <Border Grid.Column='1' Margin='6,0,0,0' CornerRadius='10' Background='@@CardBg@@'
+            BorderBrush='@@Border@@' BorderThickness='1' Padding='11,10'>
       <Grid>
         <Grid.RowDefinitions>
           <RowDefinition Height='Auto'/>
@@ -574,11 +683,15 @@ namespace ProjectPinner
         </Grid>
         <ListBox x:Name='ProjectsList' Grid.Row='1' Style='{StaticResource ProjectList}'
                  ToolTip='Your pinned projects. Select one, then Open or Remove.'/>
+        <TextBlock x:Name='EmptyHint' Grid.Row='1' Visibility='Collapsed'
+                   Text='No projects yet.&#10;Add one on the left, or right-click a folder in File Explorer.'
+                   Foreground='@@TextSecondary@@' FontSize='12' TextAlignment='Center' TextWrapping='Wrap'
+                   HorizontalAlignment='Center' VerticalAlignment='Center'/>
         <StackPanel Grid.Row='2' Orientation='Horizontal' Margin='2,7,0,0'>
           <Button x:Name='OpenButton' Content='Open' Style='{StaticResource GhostButton}' Margin='0,0,6,0'
                   ToolTip='Open the selected project in File Explorer'/>
-          <Button x:Name='RepinButton' Content='Pin folder' Style='{StaticResource GhostButton}' Margin='0,0,6,0'
-                  ToolTip='Pin the Projects folder to Quick Access (if it is not already)'/>
+          <Button x:Name='RepinButton' Content='Pin Projects folder' Style='{StaticResource GhostButton}' Margin='0,0,6,0'
+                  ToolTip='Pin the Projects folder to Quick Access (a one-time setup step, if it is not already pinned)'/>
           <Button x:Name='RemoveButton' Content='Remove' Style='{StaticResource DangerButton}'
                   ToolTip='Delete only this shortcut. Your network folder is NOT touched.'/>
         </StackPanel>
@@ -589,21 +702,19 @@ namespace ProjectPinner
   <!-- Footer -->
   <Grid Grid.Row='3' Margin='14,2,14,2'>
     <Grid.ColumnDefinitions><ColumnDefinition Width='*'/><ColumnDefinition Width='Auto'/></Grid.ColumnDefinitions>
-    <TextBlock x:Name='StatusText' Grid.Column='0' Foreground='#9AA0AA' FontSize='11.5'
+    <TextBlock x:Name='StatusText' Grid.Column='0' Foreground='@@TextSecondary@@' FontSize='11.5'
                VerticalAlignment='Center' TextTrimming='CharacterEllipsis'/>
     <StackPanel Grid.Column='1' Orientation='Horizontal'>
-      <Button x:Name='ShellMenuButton' Content='Right-click menu' Style='{StaticResource LinkButton}' Margin='0,0,10,0'
+      <Button x:Name='ShellMenuButton' Content='Right-click menu' Style='{StaticResource LinkButton}' Margin='0,0,14,0'
               ToolTip='Turn the folder right-click Pin with alias menu on or off'/>
-      <Button x:Name='SelfTestButton' Content='Run self-test' Style='{StaticResource LinkButton}' Margin='0,0,14,0'
-              ToolTip='Safe self-test: proves removing a shortcut never touches the real folder'/>
-      <Button x:Name='UninstallButton' Content='Uninstall' Style='{StaticResource LinkButton}' Foreground='#C05050'
+      <Button x:Name='UninstallButton' Content='Uninstall' Style='{StaticResource LinkButton}' Foreground='@@DangerLink@@'
               ToolTip='Remove the right-click menu, Start Menu shortcut, and Quick Access pin from this PC'/>
     </StackPanel>
   </Grid>
 
   <!-- Attribution -->
   <TextBlock Grid.Row='4' Text='Developed by Waldo Development LLC' HorizontalAlignment='Center'
-             Foreground='#5A6069' FontSize='10' Margin='0,2,0,8'/>
+             Foreground='@@TextFaint@@' FontSize='10' Margin='0,2,0,8'/>
 </Grid>";
     }
 }

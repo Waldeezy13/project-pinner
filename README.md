@@ -18,15 +18,16 @@ A lightweight Windows utility that turns a network folder like
 real folder on the network.
 
 - **One file, no admin** — a single signed `.exe`. Double-click to install: it sets up the
-  Windows 11 **top-level** right-click menu and opens the app. Runs on Windows 10 (1903+)
-  and Windows 11.
+  right-click menu and opens the app. Runs on Windows 10 (1903+) and Windows 11. The
+  **top-level** menu is Windows 11; on Windows 10 the entry is in the regular context menu.
 - **Right-click to pin** — right-click any folder → *Pin with alias to Quick Access*, type an
   alias, done. (Or add projects from the app.)
 - **Safe by design** — each alias is an ordinary Windows shortcut (`.lnk`), a pure pointer.
   Creating or deleting one **never touches the target network folder**. A built-in
   *Self-test* proves it.
 - **Signed & modern** — code-signed by Waldo Development LLC (no SmartScreen "unknown
-  publisher"). Compact dark UI with tooltips throughout.
+  publisher"). Compact UI that follows your Windows light/dark theme (or set it manually),
+  with tooltips throughout.
 
 ## How it works
 

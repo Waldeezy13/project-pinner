@@ -1,11 +1,16 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using Microsoft.Win32;
 
 namespace ProjectPinner
 {
     internal static class Installer
     {
+        /// <summary>Per-user Add/Remove Programs (Settings -> Apps) registration key.</summary>
+        private const string UninstallKeyPath =
+            @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ProjectPinner";
+
         /// <summary>Full path to the currently running executable.</summary>
         public static string CurrentExePath()
         {
@@ -23,7 +28,9 @@ namespace ProjectPinner
 
         /// <summary>
         /// Per-user install (no admin needed): copy the exe into %LOCALAPPDATA%, create a
-        /// Start Menu shortcut, and register the right-click menu. Safe to run repeatedly.
+        /// Start Menu shortcut, and register the Add/Remove Programs entry. Safe to run repeatedly.
+        /// The right-click menu itself is installed separately via <see cref="RightClickMenu.Enable"/>,
+        /// which picks the correct mechanism (modern MSIX vs classic verb).
         /// </summary>
         public static void InstallFilesForCurrentUser()
         {
@@ -39,8 +46,41 @@ namespace ProjectPinner
 
             TryCreateStartMenuShortcut();
 
-            // Add the "Pin with alias to Quick Access" right-click entry (HKCU, no admin).
-            try { ShellMenuService.Register(); } catch { /* cosmetic; never block install */ }
+            // Register in Settings -> Apps so the user can fully uninstall from there too.
+            try { WriteUninstallEntry(); } catch { /* cosmetic; never block install */ }
+        }
+
+        /// <summary>
+        /// Writes the per-user Add/Remove Programs entry whose UninstallString runs the installed exe
+        /// with --uninstall (the same full uninstall the in-app button performs). HKCU, no admin.
+        /// </summary>
+        private static void WriteUninstallEntry()
+        {
+            string exe = AppPaths.InstalledExePath;
+            string icon = File.Exists(AppPaths.IconPath) ? AppPaths.IconPath : exe;
+            string version = "1.0.0";
+            try { version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? version; }
+            catch { }
+
+            using (var key = Registry.CurrentUser.CreateSubKey(UninstallKeyPath))
+            {
+                if (key == null) return;
+                key.SetValue("DisplayName", AppPaths.AppName);
+                key.SetValue("DisplayVersion", version);
+                key.SetValue("Publisher", AppPaths.Vendor);
+                key.SetValue("DisplayIcon", icon + ",0");
+                key.SetValue("InstallLocation", AppPaths.InstallRoot);
+                key.SetValue("UninstallString", "\"" + exe + "\" --uninstall");
+                key.SetValue("QuietUninstallString", "\"" + exe + "\" --uninstall");
+                key.SetValue("NoModify", 1, RegistryValueKind.DWord);
+                key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+            }
+        }
+
+        private static void RemoveUninstallEntry()
+        {
+            try { Registry.CurrentUser.DeleteSubKeyTree(UninstallKeyPath, false); }
+            catch { /* not present == already removed */ }
         }
 
         /// <summary>
@@ -72,6 +112,7 @@ namespace ProjectPinner
         public static void Uninstall()
         {
             try { ShellMenuService.Unregister(); } catch { }
+            try { RemoveUninstallEntry(); } catch { }
             try { QuickAccessService.Unpin(ProjectsHubService.HubDir); } catch { }
             try { if (File.Exists(AppPaths.StartMenuShortcut)) File.Delete(AppPaths.StartMenuShortcut); } catch { }
         }
@@ -99,13 +140,26 @@ namespace ProjectPinner
             try
             {
                 string dir = AppPaths.InstallRoot;
-                // Safety: only ever delete a fully-rooted path that is our own install folder.
-                // Guards against a misconfigured %LOCALAPPDATA% yielding a relative/unexpected
-                // path that rmdir /s /q would otherwise walk.
-                if (string.IsNullOrEmpty(dir) || !Path.IsPathRooted(dir) ||
-                    !string.Equals(Path.GetFileName(dir.TrimEnd('\\')), "ProjectPinner",
+                // Safety: rmdir /s /q is destructive, so fence it tightly. Only ever delete a path that
+                // is ALL of: fully rooted, named exactly "ProjectPinner", NOT a UNC path, sitting on a
+                // local FIXED drive, and directly inside %LOCALAPPDATA%. This defends against a
+                // misconfigured/redirected %LOCALAPPDATA% (e.g. pointed at a network share) yielding an
+                // unexpected tree that rmdir would otherwise walk.
+                if (string.IsNullOrEmpty(dir) || !Path.IsPathRooted(dir) || dir.StartsWith(@"\\"))
+                    return;
+                if (!string.Equals(Path.GetFileName(dir.TrimEnd('\\')), "ProjectPinner",
                                    StringComparison.OrdinalIgnoreCase))
                     return;
+
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string parent = Path.GetDirectoryName(dir.TrimEnd('\\'));
+                if (string.IsNullOrEmpty(localAppData) || string.IsNullOrEmpty(parent) ||
+                    !string.Equals(Path.GetFullPath(parent), Path.GetFullPath(localAppData),
+                                   StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                try { if (new DriveInfo(Path.GetPathRoot(dir)).DriveType != DriveType.Fixed) return; }
+                catch { return; }
 
                 // Retry loop: wait, try rmdir, stop once the dir is gone (covers the exe still
                 // being locked while this process is finishing).

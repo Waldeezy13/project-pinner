@@ -49,7 +49,13 @@ namespace ProjectPinner
 
                 // Skip writing if already identical (avoids unnecessary re-pin churn).
                 bool changed = !File.Exists(ini) || File.ReadAllText(ini) != content;
-                if (changed) File.WriteAllText(ini, content);
+                if (changed)
+                {
+                    // An existing desktop.ini carries Hidden|System; .NET's File.WriteAllText can't
+                    // open a hidden file for write, so clear attributes first, then rewrite.
+                    try { if (File.Exists(ini)) File.SetAttributes(ini, FileAttributes.Normal); } catch { }
+                    File.WriteAllText(ini, content);
+                }
                 File.SetAttributes(ini, FileAttributes.Hidden | FileAttributes.System);
 
                 var di = new DirectoryInfo(HubDir);
@@ -90,11 +96,12 @@ namespace ProjectPinner
                 bool wasPinned = false;
                 try { wasPinned = IsHubPinned(); } catch { }
 
+                // Always clear any pin on the old name first — even if the folder is missing — so a
+                // stale Quick Access pin can't be orphaned under the old name with no folder behind it.
+                if (wasPinned) { try { QuickAccessService.Unpin(oldDir); } catch { } }
+
                 if (Directory.Exists(oldDir))
-                {
-                    if (wasPinned) { try { QuickAccessService.Unpin(oldDir); } catch { } }
                     Directory.Move(oldDir, newDir);
-                }
 
                 HubFolderName = clean;
                 if (cfg != null) { cfg.HubFolderName = clean; cfg.Save(); }
